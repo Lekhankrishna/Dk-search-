@@ -1,0 +1,31 @@
+# Real secrets - see the *.example versions for the expected shape.
+# Copy each to the real filename and fill in actual values after cloning.
+/config/secrets.php
+/config/db.php
+
+# Diagnostic/one-off scripts that hardcode the DB password directly instead
+# of going through config/db.php (found during a 2026-07-27 pre-push audit).
+/diag.php
+/cli/import_kerala_vidhansabha_files.py
+
+# Real production data dumps / backups - not source code, and contain real
+# user records (password hashes, session tokens, per-agent keys).
+/_mysql_upgrade_backup_*/
+
+# Data-import logs - contain real customer PII (names, addresses, DOB) from
+# bulk state-data imports.
+/cli/*.log
+/cli/*.err.log
+
+# Per-agent LPG tool config written by the installer at install time on each
+# computer - not something the source repo should ship with.
+/Gas/lpg_web/lpg_agent.cfg
+/Gas/lpg_web/lpgtool.log
+/Gas/lpg_web/lpgtool_error.log
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Claude Code local tooling config - machine-specific, not part of the app.
+/.claude/
