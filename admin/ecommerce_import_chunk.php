@@ -132,8 +132,8 @@ if ($action === 'chunk') {
     }
 
     $stmt = $pdo->prepare(
-        'INSERT INTO ecommerce_orders (name, mobile_no, address, delivery_date, latitude, longitude)
-         VALUES (:name, :mobile_no, :address, :delivery_date, :latitude, :longitude)'
+        'INSERT INTO ecommerce_orders (name, mobile_no, alternative_no, address, delivery_date, latitude, longitude)
+         VALUES (:name, :mobile_no, :alternative_no, :address, :delivery_date, :latitude, :longitude)'
     );
 
     $processed = 0;
@@ -196,6 +196,7 @@ if ($action === 'chunk') {
         $params = [
             'name'          => mb_substr($rec['name'] ?? '', 0, 128),
             'mobile_no'     => mb_substr($rec['mobile_no'], 0, 15),
+            'alternative_no'=> mb_substr($rec['alternative_no'] ?? '', 0, 15),
             'address'       => mb_substr($rec['address'] ?? '', 0, 512),
             'delivery_date' => $deliveryDate,
             'latitude'      => normalizeLatLng($latRaw, -90, 90),

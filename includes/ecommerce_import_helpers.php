@@ -13,6 +13,11 @@ const ECOMMERCE_FIELD_HEADER_MAP = [
     'name' => 'name', 'customer_name' => 'name',
     'mobile' => 'mobile_no', 'mobile_no' => 'mobile_no', 'mobile_number' => 'mobile_no',
     'phone' => 'mobile_no', 'phone_number' => 'mobile_no',
+    // Same header aliases as CUSTOMER_COLUMNS' alternative_no in
+    // includes/import_helpers.php, kept consistent across both importers.
+    'alternative_no' => 'alternative_no', 'alternative_number' => 'alternative_no',
+    'alt_no' => 'alternative_no', 'alt' => 'alternative_no', 'alternate' => 'alternative_no',
+    'alternate_number' => 'alternative_no', 'alternate_mobile' => 'alternative_no',
     'address' => 'address', 'delivery_address' => 'address',
     'delivery_date' => 'delivery_date', 'date' => 'delivery_date', 'deliverydate' => 'delivery_date',
     'latitude' => 'latitude', 'lat' => 'latitude',
@@ -24,7 +29,7 @@ const ECOMMERCE_FIELD_HEADER_MAP = [
     'lat_long' => 'location', 'latlong' => 'location', 'gps' => 'location',
 ];
 
-const ECOMMERCE_COLUMNS = ['name', 'mobile_no', 'address', 'delivery_date', 'latitude', 'longitude'];
+const ECOMMERCE_COLUMNS = ['name', 'mobile_no', 'alternative_no', 'address', 'delivery_date', 'latitude', 'longitude'];
 
 function mapEcommerceHeaderRow(array $headerRow): array {
     $fieldByColumn = [];

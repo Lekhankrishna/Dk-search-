@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `ecommerce_orders` (
 
   `name`           VARCHAR(128)    NOT NULL DEFAULT '',
   `mobile_no`      CHAR(15)        NOT NULL DEFAULT '',
+  `alternative_no` CHAR(15)        NOT NULL DEFAULT '',
   `address`        VARCHAR(512)    NOT NULL DEFAULT '',
   `delivery_date`  DATE            NULL     DEFAULT NULL,
   `latitude`       DECIMAL(10,7)   NULL     DEFAULT NULL,
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `ecommerce_orders` (
   PRIMARY KEY (`id`),
 
   KEY `idx_mobile`        (`mobile_no`),
+  KEY `idx_alt_no`        (`alternative_no`),
   KEY `idx_name`          (`name`(32)),
   KEY `idx_delivery_date` (`delivery_date`),
 
