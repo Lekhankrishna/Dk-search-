@@ -1,0 +1,202 @@
+from flask import Flask, request, jsonify
+
+import threading
+import time
+import traceback
+import uuid
+
+from lpg_search import run_bulk_search
+
+app = Flask(__name__)
+
+# Runs centrally on the CRM server itself (found 2026-07-27) rather than one
+# copy per agent's computer - lpg_search_api.php (server-side PHP, not the
+# browser) is the only caller, reaching this over plain loopback HTTP, so
+# none of the per-computer machinery the old design needed applies here:
+# no browser-facing Private Network Access headers (PHP's outgoing request
+# isn't a browser reaching into a private address space at all), no
+# per-agent capability key / device-claim check (PHP already knows who's
+# logged in via requireLpgSearchAccess() before it ever calls this), no
+# heartbeat-based self-shutdown (this is meant to run continuously as
+# server infrastructure, not something a closed browser window should stop).
+
+# In-memory job store: job_id -> {"status": ..., "total": int, "done": int, "results": [...]}
+jobs = {}
+jobs_lock = threading.Lock()
+
+MAX_NUMBERS = 10
+
+# Nothing ever removed a finished job from `jobs` - for a server that stays
+# up for days/weeks, that's an unbounded memory leak, one entry per search
+# ever run. Anything finished more than an hour ago is pruned each time a
+# new job starts - plenty of time for a client to still be polling a job it
+# just kicked off, but not kept around forever.
+JOB_RETENTION_SECONDS = 3600
+
+
+def _prune_old_jobs():
+    cutoff = time.time() - JOB_RETENTION_SECONDS
+    with jobs_lock:
+        stale_ids = [
+            job_id for job_id, job in jobs.items()
+            if job.get("finished_at") is not None and job["finished_at"] < cutoff
+        ]
+        for job_id in stale_ids:
+            del jobs[job_id]
+
+
+# Every search spawns its own full Chrome+ChromeDriver process, each with
+# its own independent Selenium driver instance (run_bulk_search() creates a
+# fresh one per call, and lpg_search.py has no shared mutable module state -
+# confirmed 2026-07-28 before relying on that for real concurrency) - so
+# running several at once is safe as far as the code goes. What isn't safe
+# is running unboundedly many at once: this machine has 4 logical CPU cores
+# total, shared with IIS/MySQL for the rest of the CRM, and measured
+# (2026-07-28) at roughly one logical core and ~400MB RAM per concurrent
+# Chrome session. A semaphore caps how many run truly simultaneously; any
+# more than that queue, same as the old single-lock version did for
+# everything. 4 is the top of the range that testing showed the CPU can
+# absorb without visibly slowing the rest of the CRM - drop to 3 in
+# MAX_CONCURRENT_SEARCHES below if this server ever feels sluggish under
+# load with all 4 slots busy.
+MAX_CONCURRENT_SEARCHES = 4
+selenium_semaphore = threading.Semaphore(MAX_CONCURRENT_SEARCHES)
+
+# How many jobs are CURRENTLY running (inside the semaphore), not just
+# queued - used only to decide the "queued" vs "processing" label a job
+# starts with; the semaphore itself is what actually enforces the cap
+# regardless of this counter's exact value.
+_active_count = 0
+_active_count_lock = threading.Lock()
+
+
+def _run_job(job_id, numbers):
+
+    def on_progress(done, total, latest_record):
+        with jobs_lock:
+            jobs[job_id]["done"] = done
+            jobs[job_id]["results"].append(latest_record)
+
+    global _active_count
+    try:
+        with _active_count_lock:
+            starts_queued = _active_count >= MAX_CONCURRENT_SEARCHES
+        with jobs_lock:
+            jobs[job_id]["status"] = "queued" if starts_queued else "processing"
+
+        with selenium_semaphore:
+            with _active_count_lock:
+                _active_count += 1
+            with jobs_lock:
+                jobs[job_id]["status"] = "processing"
+            try:
+                run_bulk_search(numbers, progress_callback=on_progress)
+            finally:
+                with _active_count_lock:
+                    _active_count -= 1
+
+        with jobs_lock:
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["finished_at"] = time.time()
+
+    except Exception as e:
+        full_trace = traceback.format_exc()
+        print(f"[job {job_id}] FAILED:\n{full_trace}")
+        with jobs_lock:
+            jobs[job_id]["status"] = "failed"
+            jobs[job_id]["error"] = str(e)
+            jobs[job_id]["traceback"] = full_trace
+            jobs[job_id]["finished_at"] = time.time()
+
+
+@app.route("/api/search", methods=["POST"])
+def start_search():
+    data = request.get_json(silent=True) or {}
+    numbers = data.get("numbers", [])
+    numbers = [str(n).strip() for n in numbers if str(n).strip()]
+
+    if not numbers:
+        return jsonify({"error": "No numbers provided"}), 400
+
+    numbers = numbers[:MAX_NUMBERS]
+
+    _prune_old_jobs()
+
+    job_id = uuid.uuid4().hex
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "processing",
+            "total": len(numbers),
+            "done": 0,
+            "results": [],
+            "finished_at": None,
+        }
+
+    threading.Thread(target=_run_job, args=(job_id, numbers), daemon=True).start()
+
+    return jsonify({"jobId": job_id, "status": "processing"})
+
+
+@app.route("/api/search/<job_id>", methods=["GET"])
+def get_search(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
+
+        # How many other still-active jobs were submitted before this one -
+        # without this, a queued job just says "waiting" with no sense of
+        # how long, which is exactly what drove a real backlog (found
+        # 2026-07-28): searches take a while, so someone waiting with no
+        # indication of progress kept re-submitting (or hitting the Refresh
+        # button, which resets the page's own state but does nothing to the
+        # job still queued server-side), piling up dozens of duplicate jobs
+        # that made the wait even longer for everyone. `jobs` is insertion-
+        # ordered (plain dict, Python 3.7+), so counting prior still-active
+        # entries gives an honest count. Subtracting (MAX_CONCURRENT_SEARCHES
+        # - 1) accounts for the worker pool (found 2026-07-28, added
+        # alongside it): with 4 concurrent slots, being 4th-in-submission-
+        # order behind 3 already-running jobs means "next up", not "wait for
+        # 4 whole turns" - the old single-lock version's raw count already
+        # meant literally that, but stayed correct for a pool by this
+        # adjustment.
+        queue_position = None
+        if job["status"] == "queued":
+            ahead = 0
+            for jid, j in jobs.items():
+                if jid == job_id:
+                    break
+                if j["status"] in ("queued", "processing"):
+                    ahead += 1
+            queue_position = max(0, ahead - MAX_CONCURRENT_SEARCHES + 1)
+
+        return jsonify({
+            "status": job["status"],
+            "total": job["total"],
+            "done": job["done"],
+            "results": job["results"],
+            "error": job.get("error"),
+            "queuePosition": queue_position,
+        })
+
+
+if __name__ == "__main__":
+    # host="127.0.0.1" (loopback only, not 0.0.0.0) - this must never be
+    # reachable from outside this machine, since it has no auth of its own
+    # any more (PHP's requireLpgSearchAccess() is what gates access now).
+    # debug=False - this runs continuously as server infrastructure rather
+    # than a locally-invoked convenience tool, so Werkzeug's interactive
+    # debugger (which can execute arbitrary code from a stack trace page)
+    # has no business being enabled here even behind loopback.
+    # Port changed from 9196 to 9197 (found 2026-07-28): 9196 got stuck in a
+    # state where netstat/Get-NetTCPConnection both showed a LISTENING
+    # socket + accumulating CLOSE_WAIT connections owned by a PID that had
+    # no corresponding process at all (Get-Process, WMI, and taskkill all
+    # agreed it didn't exist) - an orphaned kernel-level socket surviving
+    # its own process, most likely a handle left behind by the repeated
+    # Start-Process/kill cycles during testing that day. Moving off the
+    # port sidesteps it outright rather than waiting on Windows' own
+    # cleanup or a reboot.
+    app.run(host="127.0.0.1", debug=False, port=9197, threaded=True)

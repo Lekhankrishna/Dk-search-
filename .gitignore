@@ -1,0 +1,59 @@
+# Real secrets - see the *.example versions for the expected shape.
+# Copy each to the real filename and fill in actual values after cloning.
+/config/secrets.php
+/config/db.php
+
+# Diagnostic/one-off scripts that hardcode the DB password directly instead
+# of going through config/db.php (found during a 2026-07-27 pre-push audit).
+/diag.php
+/cli/import_kerala_vidhansabha_files.py
+
+# Real production data dumps / backups - not source code, and contain real
+# user records (password hashes, session tokens, per-agent keys).
+/_mysql_upgrade_backup_*/
+
+# Data-import logs - contain real customer PII (names, addresses, DOB) from
+# bulk state-data imports.
+/cli/*.log
+/cli/*.err.log
+
+# Per-agent LPG tool config written by the installer at install time on each
+# computer - not something the source repo should ship with.
+/Gas/lpg_web/lpg_agent.cfg
+/Gas/lpg_web/lpgtool.log
+/Gas/lpg_web/lpgtool_error.log
+
+# PAN India Telegram credentials and the local worker's whole runtime
+# directory (downloaded PHP loader/PHAR, QR-authorized session, logs) -
+# entirely machine-specific and regenerated on demand, nothing in it is source.
+/config/telegram.php
+/Gas/telegram_php/
+/MadelineProto.log
+/api/MadelineProto.log
+/api/madeline.version
+
+# Local deployment packaging output (see PAN_INDIA_DEPLOYMENT.md) - a zipped
+# copy of already-tracked files for manual transfer, not source itself.
+/pan-india-deployment-*/
+/pan-india-deployment-*.zip
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Project-local development runtimes and downloaded installers.
+/.runtime/
+
+# Claude Code local tooling config - machine-specific, not part of the app.
+/.claude/
+
+# Query output dumps - contain real customer PII (names, phones, PAN numbers,
+# addresses), same reasoning as the /cli/*.log exclusion above.
+/database/output_*.csv
+
+# Local service runtime logs (this machine's LPG web service), not source.
+/Gas/lpg_web/service.log
+/Gas/lpg_web/service_error.log
+
+# Stray editor/manual backup copies of tracked files.
+*.bak-*
