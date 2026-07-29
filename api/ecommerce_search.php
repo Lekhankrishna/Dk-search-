@@ -49,7 +49,7 @@ const ALLOWED_LIMITS = [10, 25, 50, 100, 250, 500, 1000];
 $requestedLimit = (int) ($_GET['limit'] ?? 50);
 $limit = in_array($requestedLimit, ALLOWED_LIMITS, true) ? $requestedLimit : 50;
 
-$cols = 'id, name, mobile_no, address, delivery_date, latitude, longitude';
+$cols = 'id, name, mobile_no, alternative_no, address, delivery_date, latitude, longitude';
 $where = '';
 $params = [];
 $logQuery = '';

@@ -10,69 +10,307 @@ require __DIR__ . '/includes/header.php';
   <h1 class="page-title" style="margin:0"><i class="bi bi-fuel-pump-fill"></i> LPG Bulk Search</h1>
 </div>
 
-<div class="card" id="lpg-frame-card" style="height:calc(100vh - 140px)">
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:14px;padding:20px">
-    <i class="bi bi-fuel-pump-fill" style="font-size:32px;color:var(--c-accent)"></i>
-    <div style="font-weight:700;color:var(--c-text);font-size:15px">LPG Bulk Search runs locally on your own computer</div>
-    <div style="font-size:13px;color:var(--c-text-muted);max-width:460px">
-      It opens in its own window — this tab stays right here.
+<style>
+  /* Self-contained rather than pulled into assets/style.css - this page's
+     table/progress-bar/chip styling is specific to LPG search results and
+     doesn't need to be global. Tokens match assets/style.css's own. */
+  .lpg-card{background:var(--c-surface,#fff);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
+  .lpg-card-body{padding:16px 18px;}
+  .lpg-hint{color:#999;margin:0 0 14px;font-size:13px;}
+  .lpg-textarea{width:100%;height:110px;padding:9px 14px;font-size:13px;color:#333;
+    border:1px solid #e0e0e0;border-radius:9px;background:#fff;resize:vertical;outline:none;}
+  .lpg-textarea:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25);}
+  .lpg-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
+  .lpg-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
+    font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
+    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);}
+  .lpg-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+  .lpg-btn:disabled{opacity:.65;cursor:wait;transform:none;}
+  .lpg-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
+  .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .lpg-btn-sm{padding:7px 16px;font-size:11px;}
+  #lpgStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
+  .lpg-progress-wrap{margin-top:12px;display:none;}
+  .lpg-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
+  .lpg-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:0%;transition:width .4s ease;}
+  .lpg-progress-fill.indeterminate{width:100%;
+    background:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+    background-size:34px 100%;animation:lpg-progress-stripes 1s linear infinite;}
+  @keyframes lpg-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
+  .lpg-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
+  .lpg-results-wrap{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:16px;overflow-x:auto;max-width:100%;}
+  .lpg-results-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #e0e0e0;background:#eeeef6;}
+  .lpg-results-toolbar .count{font-size:12px;color:#555;font-weight:600;}
+  .lpg-table{width:100%;border-collapse:collapse;font-size:11.5px;}
+  .lpg-table thead tr{background:#4f46e5;}
+  .lpg-table th{color:#fff;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:6px 8px;text-align:left;border-right:1px solid rgba(255,255,255,.18);white-space:nowrap;}
+  .lpg-table td{padding:5px 8px;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;vertical-align:top;color:#333;max-width:220px;}
+  .lpg-table tbody tr:nth-child(odd){background:#fff;}
+  .lpg-table tbody tr:nth-child(even){background:#eeeef6;}
+  .lpg-table tbody tr:hover{background:rgba(79,70,229,.06);box-shadow:inset 3px 0 0 #4f46e5;}
+  .lpg-table tbody tr:last-child td{border-bottom:none;}
+  .lpg-cell-name{font-weight:700;color:#333;}
+  .lpg-cell-mobile{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:12px;
+    background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);padding:1px 7px;border-radius:5px;
+    letter-spacing:.2px;display:inline-block;color:#0d9668;font-weight:700;}
+  .lpg-cell-dob{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:12px;color:#fff;
+    font-weight:700;letter-spacing:.2px;background:#4f46e5;padding:1px 7px;border-radius:5px;display:inline-block;}
+  .lpg-cell-empty{color:#aaa;}
+  .lpg-error-row td{color:#f87171;}
+  .lpg-error-row .lpg-cell-name::before{content:"Not found";font-weight:700;}
+</style>
+
+<div class="lpg-card">
+  <div class="lpg-card-body">
+    <p class="lpg-hint">Paste several mobile numbers (comma, space, or new line separated, up to 25) — each is looked up against your SDMS account.</p>
+    <textarea id="lpgNumbersBox" class="lpg-textarea" placeholder="9876543210, 9876543211, ..."></textarea>
+    <div class="lpg-row">
+      <button id="lpgSearchBtn" class="lpg-btn">Bulk Search</button>
+      <button id="lpgClearBtn" class="lpg-btn lpg-btn-secondary" type="button">Clear</button>
+      <button id="lpgRefreshBtn" class="lpg-btn lpg-btn-secondary" type="button">Refresh</button>
+      <span id="lpgStatus"></span>
     </div>
-    <button type="button" id="lpgOpenBtn" class="btn btn-primary">
-      <i class="bi bi-box-arrow-up-right"></i> Open LPG Bulk Search
-    </button>
-    <div style="font-size:12.5px;color:var(--c-text-soft);margin-top:6px">
-      First time on this computer?
-      <a href="#" id="lpgInstallLink">Download the one-time setup file</a> and run it, then click the button above.
+    <div class="lpg-progress-wrap" id="lpgProgressWrap">
+      <div class="lpg-progress-track"><div class="lpg-progress-fill" id="lpgProgressFill"></div></div>
+      <div class="lpg-progress-meta">
+        <span id="lpgProgressLabel"></span>
+        <span id="lpgProgressEta"></span>
+      </div>
     </div>
   </div>
 </div>
 
+<div class="lpg-results-wrap" id="lpgResultsWrap" style="display:none;">
+  <div class="lpg-results-toolbar">
+    <span class="count" id="lpgResultsCount"></span>
+    <button id="lpgExportBtn" class="lpg-btn lpg-btn-secondary lpg-btn-sm" type="button">⬇ Export to Excel</button>
+  </div>
+  <table class="lpg-table" id="lpgResultsTable">
+    <thead>
+      <tr>
+        <th style="width:36px">#</th>
+        <th>Mobile Number</th>
+        <th>Alternate Number</th>
+        <th>Full Name</th>
+        <th>DOB</th>
+        <th>Relationship Id</th>
+        <th>Address</th>
+        <th>Country</th>
+        <th>Pin Code</th>
+        <th>Urban/Rural</th>
+      </tr>
+    </thead>
+    <tbody id="lpgResultsBody"></tbody>
+  </table>
+</div>
+
 <script>
-// lpgtool_launcher.bat (registered once per computer via
-// install_lpgtool_protocol.bat) starts the local Flask server if it isn't
-// already running, then opens it in a Chrome "app mode" window - a clean,
-// borderless window with no address bar UI at all (found 2026-07-26, after
-// confirming a page loaded over plain HTTP can't embed the tool via
-// iframe/fetch either - Chrome blocks that outright as a Private Network
-// Access violation, "the request client is not a secure context", no matter
-// what headers the local server sends back). Using the OS to launch Chrome
-// directly like this sidesteps that restriction entirely, and - unlike the
-// earlier "just navigate this tab to the raw URL" fallback - means this
-// CRM tab's own address bar never has to change at all.
-//
-// "?target=bulk" is what tells the launcher which of the two tool pages to
-// open - see lpgtool_launcher.bat's own parsing of this.
-document.getElementById('lpgOpenBtn').addEventListener('click', () => {
-  window.location.href = 'lpgtool://open?target=bulk';
-});
+const searchBtn = document.getElementById("lpgSearchBtn");
+const clearBtn = document.getElementById("lpgClearBtn");
+const refreshBtn = document.getElementById("lpgRefreshBtn");
+const exportBtn = document.getElementById("lpgExportBtn");
+const numbersBox = document.getElementById("lpgNumbersBox");
+const statusEl = document.getElementById("lpgStatus");
+const resultsWrap = document.getElementById("lpgResultsWrap");
+const resultsBody = document.getElementById("lpgResultsBody");
+const resultsCount = document.getElementById("lpgResultsCount");
+const progressWrap = document.getElementById("lpgProgressWrap");
+const progressFill = document.getElementById("lpgProgressFill");
+const progressLabel = document.getElementById("lpgProgressLabel");
+const progressEta = document.getElementById("lpgProgressEta");
 
-// NOT fired automatically on page load (removed 2026-07-26): Chrome tracks
-// automatic (non-user-gesture) redirects to external protocol handlers and
-// silently throttles/blocks the whole scheme after enough of them in a
-// short window - no dialog, no error, nothing visibly happens, which is
-// exactly what made this so hard to diagnose. Confirmed by checking Chrome's
-// own profile Preferences file: a
-// safe_browsing.external_app_redirect_timestamps entry for "lpgtool" had
-// just been recorded, timed to match repeated auto-reloads during testing.
-// A real click is a genuine user gesture and isn't subject to the same
-// throttle, so the button alone (which already shows the one-time "Open LPG
-// Tool?" permission prompt on first use) is enough - no need to also fire
-// this on every page load.
+let pollTimer = null;
+let lastResults = [];
+let searchStartedAt = null;
 
-document.getElementById('lpgInstallLink').addEventListener('click', (e) => {
-  e.preventDefault();
-  const a = document.createElement('a');
-  // ?target=bulk - so the installer's own final auto-launch (right after
-  // setup finishes) opens THIS page, not the single-search default (found
-  // 2026-07-26: without this, clicking "Bulk Search" to trigger the very
-  // first install still ended up opening single-search once done, since
-  // the installer had no way to know that's not what was actually wanted).
-  a.href = 'lpg_tool_bootstrap.php?target=bulk';
-  a.download = 'LPG-Tool-Install.bat';
+function formatDuration(seconds) {
+  seconds = Math.max(0, Math.round(seconds));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function updateProgress(done, total, status) {
+  if (!total || (status !== "processing" && status !== "queued" && done === 0)) {
+    progressWrap.style.display = "none";
+    return;
+  }
+  progressWrap.style.display = "block";
+  const pct = Math.round((done / total) * 100);
+  const elapsed = searchStartedAt ? (Date.now() - searchStartedAt) / 1000 : 0;
+
+  if (done === 0) {
+    progressFill.classList.add("indeterminate");
+    progressFill.style.width = "100%";
+    progressEta.textContent = "Estimating time…";
+  } else {
+    progressFill.classList.remove("indeterminate");
+    progressFill.style.width = pct + "%";
+    if (done < total) {
+      const avgPerItem = elapsed / done;
+      progressEta.textContent = `~${formatDuration(avgPerItem * (total - done))} remaining`;
+    } else {
+      progressEta.textContent = `Done in ${formatDuration(elapsed)}`;
+    }
+  }
+  progressLabel.textContent = `${done} / ${total} searched`;
+}
+
+function parseNumbers(raw) {
+  return raw
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .slice(0, 25);
+}
+
+function cell(value, cls) {
+  if (!value) return `<td><span class="lpg-cell-empty">—</span></td>`;
+  return `<td><span class="${cls || ''}">${value}</span></td>`;
+}
+
+function renderResults(results) {
+  lastResults = results;
+  resultsBody.innerHTML = "";
+  results.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    const notFound = !!r["NOT_FOUND"];
+    if (notFound) tr.classList.add("lpg-error-row");
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      ${cell(r["Mobile Number"], "lpg-cell-mobile")}
+      ${cell(r["Alternate Number"], "lpg-cell-mobile")}
+      <td><span class="lpg-cell-name">${notFound ? "" : (r["Full Name"] || "—")}</span></td>
+      ${cell(r["DOB"], "lpg-cell-dob")}
+      <td>${notFound ? "" : (r["Relationship Id"] || "—")}</td>
+      <td>${notFound ? "" : (r["Address"] || "—")}</td>
+      <td>${notFound ? "" : (r["Country"] || "—")}</td>
+      <td>${notFound ? "" : (r["Pin Code"] || "—")}</td>
+      <td>${notFound ? "" : (r["Urban/Rural"] || "—")}</td>
+    `;
+    resultsBody.appendChild(tr);
+  });
+  resultsWrap.style.display = results.length ? "block" : "none";
+  resultsCount.textContent = results.length ? `${results.length} result${results.length === 1 ? "" : "s"}` : "";
+  exportBtn.disabled = results.length === 0;
+}
+
+function csvEscape(value) {
+  const s = (value ?? "").toString();
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportToExcel() {
+  if (!lastResults.length) return;
+  const headers = ["Mobile Number", "Alternate Number", "Full Name", "DOB", "Relationship Id", "Address", "Country", "Pin Code", "Urban/Rural"];
+  const lines = [headers.join(",")];
+  lastResults.forEach(r => {
+    const notFound = !!r["NOT_FOUND"];
+    const row = [
+      r["Mobile Number"] || "",
+      r["Alternate Number"] || "",
+      notFound ? "Not found" : (r["Full Name"] || ""),
+      r["DOB"] || "",
+      notFound ? "" : (r["Relationship Id"] || ""),
+      notFound ? "" : (r["Address"] || ""),
+      notFound ? "" : (r["Country"] || ""),
+      notFound ? "" : (r["Pin Code"] || ""),
+      notFound ? "" : (r["Urban/Rural"] || "")
+    ];
+    lines.push(row.map(csvEscape).join(","));
+  });
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `lpg_bulk_search_${stamp}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  URL.revokeObjectURL(url);
+}
+exportBtn.addEventListener("click", exportToExcel);
+
+function poll(jobId) {
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`lpg_search_api.php?action=status&jobId=${jobId}`);
+      if (!res.ok) throw new Error(`server returned ${res.status}`);
+      const data = await res.json();
+
+      statusEl.textContent = data.status === "queued"
+        ? "Waiting for another search to finish…"
+        : `Status: ${data.status} (${data.done}/${data.total})`;
+      renderResults(data.results);
+      updateProgress(data.done, data.total, data.status);
+
+      if (data.status === "completed" || data.status === "failed") {
+        clearInterval(pollTimer);
+        searchBtn.disabled = false;
+        if (data.status === "failed") {
+          statusEl.textContent = `Failed: ${data.error || "unknown error"}`;
+          progressWrap.style.display = "none";
+        }
+      }
+    } catch (pollErr) {
+      clearInterval(pollTimer);
+      statusEl.textContent = `Lost connection while checking status: ${pollErr.message}`;
+      searchBtn.disabled = false;
+      progressWrap.style.display = "none";
+    }
+  }, 2000);
+}
+
+searchBtn.addEventListener("click", async () => {
+  const numbers = parseNumbers(numbersBox.value);
+
+  if (numbers.length === 0) {
+    statusEl.textContent = "Enter at least one mobile number.";
+    return;
+  }
+
+  searchBtn.disabled = true;
+  statusEl.textContent = "Starting search...";
+  renderResults([]);
+  searchStartedAt = Date.now();
+  updateProgress(0, numbers.length, "processing");
+
+  try {
+    const res = await fetch("lpg_search_api.php?action=start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ numbers })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      statusEl.textContent = `Error: ${err.error || "could not start search"}`;
+      searchBtn.disabled = false;
+      progressWrap.style.display = "none";
+      return;
+    }
+
+    const data = await res.json();
+    statusEl.textContent = `Status: processing (0/${numbers.length})`;
+    poll(data.jobId);
+  } catch (err) {
+    statusEl.textContent = `Could not reach the server: ${err.message}`;
+    searchBtn.disabled = false;
+    progressWrap.style.display = "none";
+  }
 });
+
+clearBtn.addEventListener("click", () => {
+  if (pollTimer) clearInterval(pollTimer);
+  numbersBox.value = "";
+  statusEl.textContent = "";
+  renderResults([]);
+  progressWrap.style.display = "none";
+  searchBtn.disabled = false;
+});
+
+refreshBtn.addEventListener("click", () => location.reload());
 </script>
 
 <?php require __DIR__ . '/includes/footer.php'; ?>

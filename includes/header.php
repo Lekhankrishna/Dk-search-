@@ -16,6 +16,7 @@ $searchRegions = [
 // sidebar-state-item class that index.php's JS uses to intercept clicks for
 // same-page state switching (a real navigation here, not a state swap).
 $searchRegionsExtra = [
+    ['label' => 'PAN India', 'href' => 'pan_india.php'],
     ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
 ];
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
