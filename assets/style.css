@@ -965,3 +965,50 @@ ul.skipped-list li{margin-bottom:3px;}
   .sp-stats{gap:4px;}
   .sp-stat{min-width:56px;padding:4px 8px;}
 }
+
+/* PAN India search */
+.pan-page{max-width:1120px;margin:0 auto;}
+.pan-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:12px 0 28px;}
+.pan-heading h1{margin:4px 0 8px;font-size:28px;color:var(--c-text);}
+.pan-heading p{margin:0;color:var(--c-text-muted);font-size:14px;}
+.pan-kicker{font-size:11px;font-weight:700;letter-spacing:.13em;color:var(--c-accent);}
+.pan-status{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding:8px 12px;border:1px solid var(--c-border);border-radius:999px;background:var(--c-surface);font-size:12px;color:var(--c-text-muted);}
+.pan-connect{display:flex;align-items:center;gap:9px;}
+.pan-login-link{padding:8px 12px;border-radius:999px;background:var(--c-accent);color:#fff;text-decoration:none;font-size:12px;font-weight:600;}
+.pan-search-card,.pan-results{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
+.pan-tabs{display:flex;gap:4px;padding:10px 12px 0;border-bottom:1px solid var(--c-border);background:var(--c-surface-2);}
+.pan-tab{display:flex;align-items:center;gap:7px;padding:11px 16px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--c-text-muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+.pan-tab:hover{color:var(--c-text);}
+.pan-tab.active{color:var(--c-accent);border-bottom-color:var(--c-accent);}
+.pan-search-row{display:flex;gap:10px;padding:22px;}
+.pan-input-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0;}
+.pan-input-wrap input{width:100%;height:44px;padding:0 15px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);color:var(--c-text);font:inherit;font-size:14px;outline:none;}
+.pan-input-wrap input:focus{border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-accent-light);}
+.pan-search-btn,.pan-clear-btn{height:44px;padding:0 20px;border-radius:var(--r-md);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+.pan-search-btn{border:1px solid var(--c-accent);background:var(--c-accent);color:#fff;}
+.pan-search-btn:disabled{opacity:.65;cursor:wait;}
+.pan-clear-btn{border:1px solid var(--c-border);background:var(--c-surface);color:var(--c-text-muted);}
+.pan-alert{margin-top:16px;padding:12px 15px;border:1px solid rgba(239,68,68,.35);border-radius:var(--r-md);background:rgba(239,68,68,.08);color:#ef4444;font-size:13px;}
+.pan-results{margin-top:22px;}
+.pan-results-heading{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--c-border);}
+.pan-results-heading h2{margin:3px 0 0;font-size:18px;}
+.pan-results-heading>span{color:var(--c-text-muted);font-size:12px;}
+#pan-result-list{display:grid;gap:12px;padding:18px;}
+.pan-result-card{padding:16px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);}
+.pan-result-card pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--c-text);font:inherit;font-size:13px;line-height:1.65;}
+.pan-attachment{display:inline-flex;margin-top:12px;padding:5px 9px;border-radius:999px;background:var(--c-accent-light);color:var(--c-accent);font-size:11px;font-weight:600;}
+.pan-result-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:var(--c-text-muted);font-size:13px;}
+.pan-spinner{width:18px;height:18px;border:2px solid var(--c-border);border-top-color:var(--c-accent);border-radius:50%;animation:pan-spin .7s linear infinite;}
+.pan-spinner.small{display:inline-block;width:13px;height:13px;vertical-align:-2px;border-color:rgba(255,255,255,.35);border-top-color:#fff;}
+@keyframes pan-spin{to{transform:rotate(360deg);}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+@media(max-width:700px){
+  .pan-heading{display:block;}
+  .pan-status{margin-top:14px;}
+  .pan-tabs{overflow-x:auto;}
+  .pan-tab{white-space:nowrap;padding:10px 12px;}
+  .pan-search-row{flex-wrap:wrap;padding:16px;}
+  .pan-input-wrap{flex-basis:100%;}
+  .pan-search-btn,.pan-clear-btn{flex:1;}
+}
