@@ -64,6 +64,20 @@ function cleanTelegramResult(string $text): string
         '',
         $cleaned
     );
+
+    // The bot's own field names, relabeled for display - these come from the
+    // third-party bot's raw response text, not a form we control, so this is
+    // a find-and-replace on the field label at the start of a line rather
+    // than a real schema/property rename.
+    $fieldLabels = [
+        '/^(\s*)telephone(\s*:)/im'        => '$1Phone Number$2',
+        '/^(\s*)region(\s*:)/im'           => '$1Operator$2',
+        '/^(\s*)document\s+number(\s*:)/im' => '$1Aadhaar Number$2',
+        '/^(\s*)adres(\s*:)/im'            => '$1Address$2',
+        '/^(\s*)stat(\s*:)/im'             => '$1State$2',
+    ];
+    $cleaned = preg_replace(array_keys($fieldLabels), array_values($fieldLabels), $cleaned);
+
     return trim((string) $cleaned);
 }
 
@@ -84,6 +98,10 @@ try {
         $qr = $api->qrLogin();
         if ($qr === null) break;
         echo $qr->getQRText(2) . PHP_EOL;
+        // ASCII QR text renders unreliably in most viewers (proportional
+        // fonts, line-height distorting the square modules) - an actual
+        // image scans far more reliably (found 2026-07-29).
+        file_put_contents($serviceDirectory . '/qr_login.svg', $qr->getQRSvg(400, 4));
         echo "Waiting for the QR scan..." . PHP_EOL;
         try {
             $qr = $qr->waitForLoginOrQrCodeExpiration();
@@ -156,6 +174,18 @@ try {
                 $results = [];
                 $seen = [];
                 $quietSince = null;
+                // Polling messages.getHistory this often used to trip Telegram's
+                // own flood control - confirmed 2026-07-30 in
+                // telegram-worker-output.log ("Flood, waiting 11 seconds before
+                // repeating async call of messages.getHistory..."), which cost
+                // far more time than it saved. 800ms is the fastest cadence
+                // observed to stay clear of that penalty, so it's untouched -
+                // do NOT lower it without re-testing against the live bot.
+                // The quiet-confirmation window (2026-08-17, "too slow") is a
+                // pure local wait *after* the bot has already replied, so it's
+                // safe to trim independently: 1.5s -> 1.0s, still comfortably
+                // more than one poll cycle (so a second confirmation poll
+                // always happens), just shaves ~0.5s off every search.
                 do {
                     $history = $api->messages->getHistory(peer: $peer, min_id: $beforeId, limit: 30);
                     foreach ($history['messages'] ?? [] as $message) {
@@ -170,8 +200,8 @@ try {
                         ];
                         $quietSince = microtime(true);
                     }
-                    if ($results && $quietSince !== null && microtime(true) - $quietSince >= 2) break;
-                    usleep(500000);
+                    if ($results && $quietSince !== null && microtime(true) - $quietSince >= 1.0) break;
+                    usleep(800000);
                 } while (microtime(true) < $deadline);
 
                 usort($results, fn(array $a, array $b): int => $a['id'] <=> $b['id']);

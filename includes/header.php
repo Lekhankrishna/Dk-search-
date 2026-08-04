@@ -16,8 +16,13 @@ $searchRegions = [
 // sidebar-state-item class that index.php's JS uses to intercept clicks for
 // same-page state switching (a real navigation here, not a state swap).
 $searchRegionsExtra = [
-    ['label' => 'PAN India', 'href' => 'pan_india.php'],
     ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
+    // Open to every logged-in user (pan_india.php only calls requireLogin(),
+    // no per-user grant like LPG Search) - unconditional, unlike the block
+    // below. (Re-added 2026-08-04: this got silently deleted the same way
+    // the PAN India CSS did - a dev-tree sync overwrote this file, and dev
+    // never had this entry since pan_india.php only exists on live.)
+    ['label' => 'Pan India', 'href' => 'pan_india.php'],
 ];
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
 // only add the menu item at all when the current user has been granted it.
@@ -37,6 +42,23 @@ if (hasLpgSearchAccess()) {
 }
 $selectedState = $_GET['state'] ?? '';
 
+// Sidebar colour-coding (2026-08-03) - same 12-hue palette as the results
+// tables (pan_india.php, index.php), cycled by nav position so every item
+// gets a distinct colour instead of one flat accent purple. Inline style
+// rather than CSS nth-child - some items (LPG Search/Bulk Search, the
+// whole Account section) only render conditionally, so a fixed position
+// count in CSS would be fragile; incrementing an index in PHP as each
+// item is actually printed is not.
+const SIDEBAR_NAV_COLORS = [
+    [219, 39, 119], [124, 58, 237], [234, 88, 12], [5, 150, 105], [13, 148, 136],
+    [37, 99, 235], [79, 70, 229], [217, 119, 6], [225, 29, 72], [2, 132, 199],
+    [101, 163, 13], [192, 38, 211],
+];
+function sidebarNavColor(int $i): string {
+    [$r, $g, $b] = SIDEBAR_NAV_COLORS[$i % count(SIDEBAR_NAV_COLORS)];
+    return "$r,$g,$b";
+}
+
 $expiresAt    = $user['expires_at'] ?? null;
 $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 ?>
@@ -44,9 +66,8 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM Portal — Data Search</title>
+  <title>lookup — Data Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -59,8 +80,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__top">
       <a class="sidebar__brand" href="<?= $bp ?>index.php">
-        <div class="sidebar__brand-icon"><i class="bi bi-diagram-3-fill"></i></div>
-        CRM Portal
+        <span class="sidebar__brand-text">lookup</span>
       </a>
       <button class="sidebar__hamburger" id="sidebar-toggle" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>
@@ -69,19 +89,27 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 
     <div class="sidebar__section-label">Search Regions</div>
     <nav class="sidebar__group">
-      <?php foreach ($searchRegions as $region): ?>
+      <?php
+      $navColorIndex = 0;
+      foreach ($searchRegions as $region):
+        $isActive = $currentPage === 'index.php' && $selectedState === $region['state'];
+        $thisColorIndex = $navColorIndex++;
+      ?>
         <a href="<?= $bp ?>index.php<?= $region['state'] !== '' ? '?state=' . urlencode($region['state']) : '' ?>"
-           class="sidebar__item sidebar-state-item<?= ($currentPage === 'index.php' && $selectedState === $region['state']) ? ' active' : '' ?>"
+           class="sidebar__item sidebar-state-item<?= $isActive ? ' active' : '' ?>"
            data-state="<?= htmlspecialchars($region['state']) ?>">
-          <span class="sidebar__avatar"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
+          <span class="sidebar__avatar" style="background:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
           <?= htmlspecialchars($region['label']) ?>
         </a>
       <?php endforeach; ?>
-      <?php foreach ($searchRegionsExtra as $region): ?>
+      <?php foreach ($searchRegionsExtra as $region):
+        $isActive = $currentPage === basename($region['href']);
+        $thisColorIndex = $navColorIndex++;
+      ?>
         <a href="<?= preg_match('#^https?://#', $region['href']) ? $region['href'] : $bp . $region['href'] ?>"
-           class="sidebar__item<?= $currentPage === basename($region['href']) ? ' active' : '' ?>"
+           class="sidebar__item<?= $isActive ? ' active' : '' ?>"
            <?= !empty($region['external']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-          <span class="sidebar__avatar"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
+          <span class="sidebar__avatar" style="background:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
           <?= htmlspecialchars($region['label']) ?>
           <?php if (!empty($region['external'])): ?>
             <i class="bi bi-box-arrow-up-right" style="margin-left:auto;font-size:11px;opacity:.6"></i>
@@ -92,27 +120,23 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 
     <div class="sidebar__section-label">Account</div>
     <nav class="sidebar__group">
-      <?php if ($user['role'] === 'admin'): ?>
-        <a href="<?= $bp ?>admin/agents.php" class="sidebar__item<?= $currentPage === 'agents.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-people-fill"></i></span> Agents
+      <?php if ($user['role'] === 'admin'):
+        $adminNavItems = [
+          ['page' => 'agents.php',             'href' => 'admin/agents.php',             'icon' => 'bi-people-fill',       'label' => 'Agents'],
+          ['page' => 'logs.php',               'href' => 'admin/logs.php',               'icon' => 'bi-journal-text',      'label' => 'Audit Log'],
+          ['page' => 'import.php',             'href' => 'admin/import.php',             'icon' => 'bi-cloud-upload-fill', 'label' => 'Import'],
+          ['page' => 'ecommerce_import.php',   'href' => 'admin/ecommerce_import.php',   'icon' => 'bi-cart-fill',         'label' => 'E-Comm Import'],
+          ['page' => 'lpg_settings.php',       'href' => 'admin/lpg_settings.php',       'icon' => 'bi-key-fill',          'label' => 'LPG Settings'],
+          ['page' => 'whatsapp_settings.php',  'href' => 'admin/whatsapp_settings.php',  'icon' => 'bi-whatsapp',          'label' => 'WhatsApp Settings'],
+        ];
+        foreach ($adminNavItems as $item):
+          $isActive = $currentPage === $item['page'];
+          $thisColorIndex = $navColorIndex++;
+      ?>
+        <a href="<?= $bp . $item['href'] ?>" class="sidebar__item<?= $isActive ? ' active' : '' ?>">
+          <span class="sidebar__icon" style="color:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><i class="bi <?= $item['icon'] ?>"></i></span> <?= htmlspecialchars($item['label']) ?>
         </a>
-        <a href="<?= $bp ?>admin/logs.php" class="sidebar__item<?= $currentPage === 'logs.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-journal-text"></i></span> Audit Log
-        </a>
-        <a href="<?= $bp ?>admin/import.php" class="sidebar__item<?= $currentPage === 'import.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-cloud-upload-fill"></i></span> Import
-        </a>
-        <a href="<?= $bp ?>admin/ecommerce_import.php" class="sidebar__item<?= $currentPage === 'ecommerce_import.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-cart-fill"></i></span> E-Comm Import
-        </a>
-        <a href="<?= $bp ?>admin/lpg_settings.php" class="sidebar__item<?= $currentPage === 'lpg_settings.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-key-fill"></i></span> LPG Settings
-        </a>
-      <?php endif; ?>
-      <button type="button" id="theme-toggle-btn" class="sidebar__item">
-        <span class="sidebar__icon"><i class="bi bi-moon-stars-fill" id="theme-toggle-icon"></i></span>
-        <span id="theme-toggle-label">Dark Mode</span>
-      </button>
+      <?php endforeach; endif; ?>
     </nav>
 
     <div class="sidebar__footer">

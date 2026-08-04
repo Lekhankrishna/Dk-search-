@@ -46,6 +46,28 @@ require __DIR__ . '/includes/header.php';
   .lpg-table tbody tr:nth-child(even){background:#eeeef6;}
   .lpg-table tbody tr:hover{background:rgba(79,70,229,.06);box-shadow:inset 3px 0 0 #4f46e5;}
   .lpg-table tbody tr:last-child td{border-bottom:none;}
+  /* Colour-coded columns (2026-08-03), same palette as pan_india.php/index.php -
+     column 1 ("#") stays plain, columns 2-10 each get their own header colour
+     plus a light tint on the cell (this page is a fixed light theme, not the
+     shared dark/light CSS variables, so plain hex/rgba is used directly). */
+  .lpg-table th:nth-child(2){background:rgb(219,39,119);}
+  .lpg-table th:nth-child(3){background:rgb(124,58,237);}
+  .lpg-table th:nth-child(4){background:rgb(234,88,12);}
+  .lpg-table th:nth-child(5){background:rgb(5,150,105);}
+  .lpg-table th:nth-child(6){background:rgb(13,148,136);}
+  .lpg-table th:nth-child(7){background:rgb(37,99,235);}
+  .lpg-table th:nth-child(8){background:rgb(217,119,6);}
+  .lpg-table th:nth-child(9){background:rgb(225,29,72);}
+  .lpg-table th:nth-child(10){background:rgb(2,132,199);}
+  .lpg-table td:nth-child(2){background:rgba(219,39,119,.08);border-left:3px solid rgba(219,39,119,.5);}
+  .lpg-table td:nth-child(3){background:rgba(124,58,237,.08);border-left:3px solid rgba(124,58,237,.5);}
+  .lpg-table td:nth-child(4){background:rgba(234,88,12,.08);border-left:3px solid rgba(234,88,12,.5);}
+  .lpg-table td:nth-child(5){background:rgba(5,150,105,.08);border-left:3px solid rgba(5,150,105,.5);}
+  .lpg-table td:nth-child(6){background:rgba(13,148,136,.08);border-left:3px solid rgba(13,148,136,.5);}
+  .lpg-table td:nth-child(7){background:rgba(37,99,235,.08);border-left:3px solid rgba(37,99,235,.5);}
+  .lpg-table td:nth-child(8){background:rgba(217,119,6,.08);border-left:3px solid rgba(217,119,6,.5);}
+  .lpg-table td:nth-child(9){background:rgba(225,29,72,.08);border-left:3px solid rgba(225,29,72,.5);}
+  .lpg-table td:nth-child(10){background:rgba(2,132,199,.08);border-left:3px solid rgba(2,132,199,.5);}
   .lpg-cell-name{font-weight:700;color:#333;}
   .lpg-cell-mobile{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:12px;
     background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);padding:1px 7px;border-radius:5px;

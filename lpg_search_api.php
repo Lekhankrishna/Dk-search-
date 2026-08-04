@@ -7,13 +7,37 @@
 // download needed, since the browser never talks to the search service
 // directly at all; PHP does, over loopback, entirely server-side.
 require __DIR__ . '/includes/auth.php';
-requireLpgSearchAccess(); // requireLogin() + a 403 for logged-in users without the "LPG Search Access" permission (Admin > Agents)
 
 header('Content-Type: application/json');
 
+// API requests must never redirect to login.php: fetch() would receive an
+// HTML page and fail while trying to parse it as JSON (found 2026-07-31 -
+// "Unexpected token '<', <!DOCTYPE...' is not valid JSON" whenever a
+// session expired mid-search). requireLpgSearchAccess() does exactly that
+// redirect, so its checks are reimplemented here in JSON-safe form instead
+// of calling it directly - mirrors api/pan_india.php's same guard.
+if (!isLoggedIn() || !isSessionValid()) {
+    http_response_code(401);
+    echo json_encode([
+        'error' => 'Your CRM session has expired or was replaced. Please sign in again.',
+        'loginUrl' => 'login.php?reason=session_replaced',
+    ]);
+    exit;
+}
+if (!hasLpgSearchAccess()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Access denied: LPG Search access has not been granted for this account.']);
+    exit;
+}
+
+require_once __DIR__ . '/includes/lpg_archive.php';
+
 const FLASK_BASE = 'http://127.0.0.1:9197';
 
-function proxyToFlask(string $method, string $path, ?array $body = null): void {
+// $onResponse, when given, sees the decoded JSON body before it's echoed -
+// used to archive results as a side effect without touching what's actually
+// sent back to the browser.
+function proxyToFlask(string $method, string $path, ?array $body = null, ?callable $onResponse = null): void {
     $ch = curl_init(FLASK_BASE . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     // A single search can legitimately take well over a minute (up to 25
@@ -37,6 +61,10 @@ function proxyToFlask(string $method, string $path, ?array $body = null): void {
         echo json_encode(['error' => "Could not reach the search service: $err"]);
         exit;
     }
+    if ($onResponse !== null) {
+        $decoded = json_decode($response, true);
+        if (is_array($decoded)) $onResponse($decoded);
+    }
     http_response_code($httpCode ?: 200);
     echo $response;
     exit;
@@ -54,7 +82,10 @@ if ($action === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['error' => 'Invalid job id']);
         exit;
     }
-    proxyToFlask('GET', '/api/search/' . $jobId);
+    $searchedBy = currentUser()['username'] ?? 'unknown';
+    proxyToFlask('GET', '/api/search/' . $jobId, null, function (array $job) use ($searchedBy) {
+        archiveLpgResults($job['results'] ?? [], $searchedBy);
+    });
 } else {
     http_response_code(400);
     echo json_encode(['error' => 'Unknown action']);
