@@ -67,6 +67,33 @@ function requireLpgSearchAccess(string $loginPath = 'login.php'): void {
     }
 }
 
+// Global settings row (id = 1) — created by migrate_add_whatsapp_button.sql.
+// Cached per-request; an admin's save on whatsapp_settings.php takes effect
+// on the very next request for every user, not just after their next login.
+function whatsappSettings(): array {
+    global $pdo;
+    static $settings = null;
+    if ($settings !== null) return $settings;
+    $row = $pdo->query('SELECT is_enabled, phone_number, default_message FROM whatsapp_settings WHERE id = 1')->fetch();
+    $settings = $row ?: ['is_enabled' => 0, 'phone_number' => '919901431238', 'default_message' => 'Hi'];
+    return $settings;
+}
+
+// Visible only when BOTH the global switch is on AND this account is on the
+// admin-selected allowlist — disabling the switch hides it for everyone
+// even if individual users are still marked allowed (see whatsapp_settings.php).
+function hasWhatsAppButtonAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    if (!whatsappSettings()['is_enabled']) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT whatsapp_button_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
 function currentUser(): array {
     return [
         'id' => $_SESSION['user_id'] ?? null,

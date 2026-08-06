@@ -26,7 +26,7 @@ require __DIR__ . '/../includes/header.php';
   <div class="card-body">
     <p class="text-muted text-sm" style="margin:0 0 16px">
       Recognised columns:
-      <strong>Mobile Number</strong> (required), Name, Address, Delivery Date,
+      <strong>Mobile Number</strong> (required), Name, Alternate Number, Address, Delivery Date,
       Location (combined "lat,long", e.g. 12.9716,77.5946 — or separate Latitude/Longitude columns).
     </p>
     <form id="ecom-import-form" enctype="multipart/form-data">

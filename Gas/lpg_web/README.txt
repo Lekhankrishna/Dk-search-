@@ -1,45 +1,43 @@
-LPG Bulk Search Tool — Setup Instructions
-==========================================
+LPG Search Tool — Server Setup
+===============================
 
-This tool automates looking up mobile numbers in your IndianOil SDMS
-account. It needs to run on EACH computer that will use it — it opens and
-controls a Chrome window on whichever computer it's running on, so it can't
-be shared centrally from one machine to another.
+This runs centrally on the CRM server itself (found 2026-07-27 — it used to
+require a separate install on every agent's own computer; that whole
+approach was replaced with this one). Agents just use the "LPG Search" /
+"LPG Bulk Search" pages in the CRM directly - no download, no per-computer
+setup, nothing to install on their end.
 
-Requirements on every computer that will use this:
-  1. Python 3.x — download from https://www.python.org/downloads/ if not
-     already installed. During setup, tick "Add python.exe to PATH".
-  2. Google Chrome — download from https://www.google.com/chrome/ if not
-     already installed.
+This folder only needs to be set up ONCE, on the server:
 
-RECOMMENDED SETUP — auto-launch from the CRM (do this once per computer):
-  1. Copy this whole "lpg_web" folder to the computer.
-  2. Double-click "setup_and_run.bat" once, to install the required Python
-     packages (this also starts the tool — you can close that window after,
-     it's just to get the packages installed the first time).
-  3. Double-click "install_lpgtool_protocol.bat". This registers a
-     "lpgtool://" link handler for your Windows user account only — no
-     administrator rights needed, and it doesn't affect other accounts on
-     this computer.
-  4. Done. From now on, clicking "LPG Search" in the CRM on this computer
-     will show a one-time browser permission prompt ("Open LPG Tool?"),
-     then automatically start the tool in the background if it isn't
-     already running, and load it right there on the page.
+  1. Python 3.x and Google Chrome must be installed on this machine.
+  2. Double-click "setup_and_run.bat" once to install the required Python
+     packages (flask, selenium) and do a one-off manual start to confirm it
+     works - watch for "Running on http://127.0.0.1:9197" with no errors,
+     then close that window (Ctrl+C).
+  3. For the service to run automatically (survive the server restarting,
+     recover if it crashes), a copy of "run_lpg_service.bat" needs to be in
+     this Windows account's Startup folder (shell:startup) - already set up
+     as part of the 2026-07-27 migration; re-run this step only if setting
+     up on a NEW server.
 
-MANUAL ALTERNATIVE — if you'd rather not register the link handler:
-  Double-click "setup_and_run.bat" every time before using the tool, and
-  leave that window open while you use it. The CRM page will find it
-  running either way.
+How it's wired up: lpg_search.php / lpg_bulk_search.php (the CRM pages
+agents actually use) call lpg_search_api.php, which is a small PHP proxy
+that forwards to this Flask service over plain loopback HTTP
+(127.0.0.1:9197) - server-to-server, never exposed to the browser or the
+internet. This is why there's no browser-facing auth check in app.py
+itself: PHP's requireLpgSearchAccess() (checked before it ever proxies a
+request here) is the only gate that matters.
 
 Troubleshooting:
-  - "Python was not found" — install Python (see Requirements above) and
-    make sure "Add python.exe to PATH" was checked during install, then
-    restart the computer if it still isn't found.
-  - The CRM's LPG Search page shows "Can't reach the LPG Search tool" after
-    the permission prompt — the packages probably aren't installed yet on
-    this computer. Run setup_and_run.bat once manually first, then try again.
-  - No permission prompt appears when clicking LPG Search — the one-time
-    install_lpgtool_protocol.bat step hasn't been run on this computer yet.
+  - CRM pages show "Could not reach the search service" — this Flask
+    service isn't running. Check `netstat -ano | findstr 9197` for a
+    LISTENING entry; if missing, run run_lpg_service.bat manually (or
+    double-click setup_and_run.bat again) and check its console output for
+    errors.
   - Login to SDMS fails — double check the SDMS username/password stored
     inside lpg_search.py (USERNAME / PASSWORD near the top of the file) are
     still correct.
+  - Searches queue up behind each other rather than running in parallel —
+    expected: every search here shares one Selenium session at a time
+    (selenium_lock in app.py), since this is now one shared service for
+    every agent rather than one copy per computer.

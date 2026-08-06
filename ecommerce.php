@@ -95,6 +95,7 @@ require __DIR__ . '/includes/header.php';
         <tr>
           <th>Name</th>
           <th>Mobile</th>
+          <th>Alternate</th>
           <th>Address</th>
           <th>Delivery Date</th>
           <th>Location</th>
@@ -173,7 +174,8 @@ const dataTable = $('#results').DataTable({
   columns: [
     { data:'name',          width:'18%', render:d=>`<strong class="col-name" title="${esc(d)}">${d||'—'}</strong>` },
     { data:'mobile_no',     width:'10%', render:d=>d?`<span class="chip-mobile">${d}</span>`:'<span class="na">—</span>' },
-    { data:'address',       width:'28%', render:d=>d?`<span class="col-addr" title="${esc(d)}">${d}</span>`:'<span class="na">—</span>' },
+    { data:'alternative_no',width:'10%', render:d=>d?`<span class="chip-mobile">${d}</span>`:'<span class="na">—</span>' },
+    { data:'address',       width:'24%', render:d=>d?`<span class="col-addr" title="${esc(d)}">${d}</span>`:'<span class="na">—</span>' },
     { data:'delivery_date', width:'12%', render:d=>d?`<span class="col-dob">${fmtDate(d)}</span>`:'<span class="na">—</span>' },
     { data:null,            width:'20%', render:r=>fmtLocation(r.latitude, r.longitude) || '<span class="na">—</span>' },
     { data:'distance_km',   width:'8%',  visible:false, render:d=>(d!==null&&d!==undefined)?`${(+d).toFixed(2)} km`:'<span class="na">—</span>' },

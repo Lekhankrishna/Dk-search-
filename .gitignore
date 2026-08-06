@@ -29,3 +29,8 @@ __pycache__/
 
 # Claude Code local tooling config - machine-specific, not part of the app.
 /.claude/
+
+# Local dev-server runtime (router.php, logs) for running this tree with
+# PHP's built-in server - machine-specific, regenerated on demand, nothing
+# in it is source. Same exclusion as the live tree's own .gitignore.
+/.runtime/

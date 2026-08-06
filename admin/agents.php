@@ -248,7 +248,6 @@ require __DIR__ . '/../includes/header.php';
         <tr>
           <th style="width:55px">ID</th>
           <th style="width:120px">Username</th>
-          <th style="width:150px">Full Name</th>
           <th style="width:170px">Mobile Number</th>
           <th style="width:80px">Role</th>
           <th style="width:85px">Status</th>
@@ -273,7 +272,6 @@ require __DIR__ . '/../includes/header.php';
             data-search="<?= htmlspecialchars(strtolower($u['username'] . ' ' . $u['full_name'] . ' ' . ($u['mobile_no'] ?? ''))) ?>">
           <td class="text-sm text-muted">#<?= (int) $u['id'] ?></td>
           <td><strong><?= htmlspecialchars($u['username']) ?></strong></td>
-          <td><?= htmlspecialchars($u['full_name']) ?></td>
           <td class="text-sm text-muted"><?= htmlspecialchars($u['mobile_no'] ?? '') ?: '<span class="na">—</span>' ?></td>
           <td>
             <span class="badge <?= $u['role'] === 'admin' ? 'badge-warning' : 'badge-info' ?>">
