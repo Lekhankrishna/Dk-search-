@@ -257,16 +257,15 @@ require __DIR__ . '/../includes/header.php';
     <table class="results-table agents-table" id="accounts-table">
       <thead>
         <tr>
-          <th style="width:55px">ID</th>
-          <th style="width:120px">Username</th>
-          <th style="width:170px">Mobile Number</th>
-          <th style="width:80px">Role</th>
-          <th style="width:85px">Status</th>
-          <th style="width:105px">LPG Access</th>
-          <th style="width:115px">Pan India Access</th>
-          <th style="width:170px">Created</th>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Mobile Number</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>LPG</th>
+          <th>Pan India</th>
           <th>Set Expiry</th>
-          <th style="width:220px">Actions</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -301,7 +300,6 @@ require __DIR__ . '/../includes/header.php';
               <?= $u['pan_india_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
           </td>
-          <td class="text-sm text-muted"><?= htmlspecialchars($u['created_at']) ?></td>
           <td>
             <form method="post" class="expiry-form">
               <input type="hidden" name="action" value="set_expiry">
@@ -332,7 +330,7 @@ require __DIR__ . '/../includes/header.php';
               <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
               <button type="submit" class="btn btn-sm <?= $u['lpg_search_access'] ? 'btn-warning' : 'btn-secondary' ?>"
                       title="<?= $u['lpg_search_access'] ? 'Revoke LPG Search access' : 'Grant LPG Search access' ?>">
-                <i class="bi bi-fuel-pump-fill"></i> <?= $u['lpg_search_access'] ? 'Revoke LPG' : 'Grant LPG' ?>
+                <i class="bi bi-fuel-pump-fill"></i> LPG
               </button>
             </form>
             <form method="post" style="display:inline">
@@ -340,7 +338,7 @@ require __DIR__ . '/../includes/header.php';
               <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
               <button type="submit" class="btn btn-sm <?= $u['pan_india_access'] ? 'btn-warning' : 'btn-secondary' ?>"
                       title="<?= $u['pan_india_access'] ? 'Revoke Pan India access' : 'Grant Pan India access' ?>">
-                <i class="bi bi-globe-asia-australia"></i> <?= $u['pan_india_access'] ? 'Revoke Pan India' : 'Grant Pan India' ?>
+                <i class="bi bi-globe-asia-australia"></i> Pan India
               </button>
             </form>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -354,14 +352,6 @@ require __DIR__ . '/../includes/header.php';
               </form>
             <?php endif; ?>
             <?php if (!$isSelf): ?>
-              <form method="post" style="display:inline">
-                <input type="hidden" name="action" value="toggle">
-                <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
-                <button type="submit" class="btn btn-sm <?= $u['is_active'] ? 'btn-warning' : 'btn-success' ?>">
-                  <i class="bi bi-<?= $u['is_active'] ? 'pause-circle' : 'play-circle' ?>"></i>
-                  <?= $u['is_active'] ? 'Disable' : 'Enable' ?>
-                </button>
-              </form>
               <form method="post" style="display:inline"
                     onsubmit="return confirm('Delete account \'<?= htmlspecialchars($u['username'], ENT_QUOTES) ?>\'?\nSearch history will also be deleted. This cannot be undone.')">
                 <input type="hidden" name="action" value="delete">
