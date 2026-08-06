@@ -21,12 +21,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($user['expires_at'] !== null && strtotime($user['expires_at']) <= time()) {
             $error = 'This account has expired. Please contact an administrator.';
         } else {
-            // A fresh token here invalidates any session already open elsewhere for
-            // this user — the next request on that older session will see a
-            // mismatch against this new DB value and get signed out automatically.
+            // Each account gets up to max_concurrent_sessions active device
+            // slots (Admin > Agents > "Max Simultaneous Logins", default 1 -
+            // same as the old single-session behaviour). A login beyond that
+            // limit evicts the least-recently-used session rather than being
+            // refused - same "a new login always wins" spirit the old
+            // single-token version had, just extended past one slot instead
+            // of always kicking the only other session.
+            $maxSessions = max(1, (int) $user['max_concurrent_sessions']);
+            $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_sessions WHERE user_id = :id');
+            $countStmt->execute(['id' => $user['id']]);
+            $currentCount = (int) $countStmt->fetchColumn();
+            $toEvict = max(0, $currentCount - $maxSessions + 1);
+            if ($toEvict > 0) {
+                // $toEvict is derived from a COUNT(), not user input - safe to
+                // interpolate; PDO can't bind LIMIT as a parameter.
+                $pdo->prepare("DELETE FROM user_sessions WHERE user_id = :id ORDER BY last_seen_at ASC LIMIT {$toEvict}")
+                    ->execute(['id' => $user['id']]);
+            }
+
             $token = bin2hex(random_bytes(32));
-            $pdo->prepare('UPDATE users SET session_token = :token, last_login_at = NOW() WHERE id = :id')
-                ->execute(['token' => $token, 'id' => $user['id']]);
+            $pdo->prepare('INSERT INTO user_sessions (user_id, session_token) VALUES (:id, :token)')
+                ->execute(['id' => $user['id'], 'token' => $token]);
+            $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = :id')
+                ->execute(['id' => $user['id']]);
 
             session_regenerate_id(true);
             $_SESSION['user_id']       = $user['id'];

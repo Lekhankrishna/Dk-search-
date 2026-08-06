@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password  = $_POST['password']       ?? '';
         $role      = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
         $expiresAtSql = $expiresDate !== '' ? "$expiresDate $expiresTime:00" : null;
@@ -25,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, max_concurrent_sessions, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :max_sessions, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -36,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                     'role'      => $role,
                     'lpg_access'=> $lpgAccess,
+                    'max_sessions' => $maxSessions,
                     'expires_at'=> $expiresAtSql,
                 ]);
                 $message = "Account <strong>" . htmlspecialchars($username) . "</strong> created successfully.";
@@ -51,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mobileNo = trim($_POST['mobile_no'] ?? '');
         $role     = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $newPassword  = $_POST['new_password'] ?? '';
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
@@ -63,25 +66,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
                 'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                 'role'      => $role,
                 'lpg_access'=> $lpgAccess,
+                'max_sessions' => $maxSessions,
                 'expires_at'=> $expiresAtSql,
                 'id'        => $id,
             ];
-            // Changing the password invalidates that account's current session — if the
-            // password was changed because it leaked, the old session shouldn't survive it.
+            // Changing the password invalidates every one of that account's
+            // current sessions - if the password was changed because it
+            // leaked, none of the old sessions (not just one) should survive it.
             if ($newPassword !== '') {
-                $sql .= ', password_hash = :hash, session_token = NULL';
+                $sql .= ', password_hash = :hash';
                 $params['hash'] = password_hash($newPassword, PASSWORD_DEFAULT);
             }
             $sql .= ' WHERE id = :id';
             try {
                 $pdo->prepare($sql)->execute($params);
+                if ($newPassword !== '') {
+                    $pdo->prepare('DELETE FROM user_sessions WHERE user_id = :id')->execute(['id' => $id]);
+                }
                 $message = "Account <strong>" . htmlspecialchars($username) . "</strong> updated successfully.";
             } catch (PDOException $e) {
                 $message     = 'Could not update account — username may already be taken.';
@@ -121,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id !== (int) $_SESSION['user_id']) {
             $pdo->beginTransaction();
             $pdo->prepare('DELETE FROM search_logs WHERE user_id = :id')->execute(['id' => $id]);
+            $pdo->prepare('DELETE FROM user_sessions WHERE user_id = :id')->execute(['id' => $id]);
             $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $id]);
             $pdo->commit();
             $message     = 'Account deleted successfully.';
@@ -133,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
 )->fetchAll();
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
@@ -215,6 +224,11 @@ require __DIR__ . '/../includes/header.php';
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)">
       <input type="checkbox" name="lpg_search_access" value="1" style="width:auto"> LPG Search Access
     </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)"
+           title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
+      Max Simultaneous Logins
+      <input type="number" name="max_concurrent_sessions" value="1" min="1" max="50" style="width:60px">
+    </label>
     <input type="text" name="expires_date" placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" maxlength="10"
            title="Expiry date, DD/MM/YYYY (leave blank for no expiry)" style="min-width:140px">
     <input type="time" name="expires_time" title="Expiry time (defaults to 00:00)" style="min-width:110px">
@@ -246,15 +260,14 @@ require __DIR__ . '/../includes/header.php';
     <table class="results-table agents-table" id="accounts-table">
       <thead>
         <tr>
-          <th style="width:55px">ID</th>
-          <th style="width:120px">Username</th>
-          <th style="width:170px">Mobile Number</th>
-          <th style="width:80px">Role</th>
-          <th style="width:85px">Status</th>
-          <th style="width:105px">LPG Access</th>
-          <th style="width:170px">Created</th>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Mobile Number</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>LPG</th>
           <th>Set Expiry</th>
-          <th style="width:220px">Actions</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -284,7 +297,6 @@ require __DIR__ . '/../includes/header.php';
               <?= $u['lpg_search_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
           </td>
-          <td class="text-sm text-muted"><?= htmlspecialchars($u['created_at']) ?></td>
           <td>
             <form method="post" class="expiry-form">
               <input type="hidden" name="action" value="set_expiry">
@@ -307,7 +319,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
             <form method="post" style="display:inline">
@@ -315,7 +327,7 @@ require __DIR__ . '/../includes/header.php';
               <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
               <button type="submit" class="btn btn-sm <?= $u['lpg_search_access'] ? 'btn-warning' : 'btn-secondary' ?>"
                       title="<?= $u['lpg_search_access'] ? 'Revoke LPG Search access' : 'Grant LPG Search access' ?>">
-                <i class="bi bi-fuel-pump-fill"></i> <?= $u['lpg_search_access'] ? 'Revoke LPG' : 'Grant LPG' ?>
+                <i class="bi bi-fuel-pump-fill"></i> LPG
               </button>
             </form>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -329,14 +341,6 @@ require __DIR__ . '/../includes/header.php';
               </form>
             <?php endif; ?>
             <?php if (!$isSelf): ?>
-              <form method="post" style="display:inline">
-                <input type="hidden" name="action" value="toggle">
-                <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
-                <button type="submit" class="btn btn-sm <?= $u['is_active'] ? 'btn-warning' : 'btn-success' ?>">
-                  <i class="bi bi-<?= $u['is_active'] ? 'pause-circle' : 'play-circle' ?>"></i>
-                  <?= $u['is_active'] ? 'Disable' : 'Enable' ?>
-                </button>
-              </form>
               <form method="post" style="display:inline"
                     onsubmit="return confirm('Delete account \'<?= htmlspecialchars($u['username'], ENT_QUOTES) ?>\'?\nSearch history will also be deleted. This cannot be undone.')">
                 <input type="hidden" name="action" value="delete">
@@ -392,6 +396,14 @@ require __DIR__ . '/../includes/header.php';
         </label>
       </div>
       <div class="form-group">
+        <label class="form-label" for="edit-max_concurrent_sessions"
+               title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
+          Max Simultaneous Logins
+        </label>
+        <input type="number" class="form-control" name="max_concurrent_sessions" id="edit-max_concurrent_sessions"
+               value="1" min="1" max="50" style="width:100px">
+      </div>
+      <div class="form-group">
         <label class="form-label">Expiry Date &amp; Time</label>
         <div style="display:flex;gap:8px">
           <input type="text" class="form-control" name="expires_date" id="edit-expires_date"
@@ -418,13 +430,14 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, maxSessions, expiresDate, expiresTime) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
   document.getElementById('edit-mobile_no').value = mobileNo;
   document.getElementById('edit-role').value = role;
   document.getElementById('edit-lpg_search_access').checked = !!lpgAccess;
+  document.getElementById('edit-max_concurrent_sessions').value = maxSessions;
   document.getElementById('edit-expires_date').value = expiresDate;
   document.getElementById('edit-expires_time').value = expiresTime;
   document.getElementById('edit-new_password').value = '';

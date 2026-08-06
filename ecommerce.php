@@ -268,6 +268,7 @@ searchForm.addEventListener('submit', e => {
   runSearch(buildSearchParams());
 });
 
+
 function clearSearch() {
   document.getElementById('search-form').reset();
   document.querySelectorAll('.sp-input').forEach(el => el.value = '');
