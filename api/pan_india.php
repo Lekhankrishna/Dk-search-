@@ -29,7 +29,12 @@ require_once __DIR__ . '/../includes/telegram_worker_client.php';
 require_once __DIR__ . '/../includes/pan_india_archive.php';
 set_time_limit(60);
 
-function reply(int $status, array $data): never {
+// No ": never" return type - that's PHP 8.1+ only, and this file needs to
+// parse on PHP 7.4 (found 2026-08-06: the production IIS site serves PHP
+// 7.4, not the PHP 8.3 this app is normally tested against locally - a
+// return-type PHP 7.4 doesn't recognize is a parse error that breaks the
+// ENTIRE file, not just this function).
+function reply(int $status, array $data) {
     // Third-party Telegram code can write diagnostic text. Never allow it to
     // prefix the JSON response consumed by fetch().
     if (ob_get_level() > 0) ob_clean();

@@ -7,20 +7,33 @@ function isLoggedIn(): bool {
     return isset($_SESSION['user_id']);
 }
 
-// A user is only ever "signed in" on the device that holds the current
-// session_token — logging in elsewhere overwrites the DB token, which
-// invalidates every older session on its next request. Checked once per
-// request (static cache) since it costs a DB round trip.
+// A user can be signed in on up to users.max_concurrent_sessions devices at
+// once (Admin > Agents > "Max Simultaneous Logins", default 1) - each an
+// independent row in user_sessions rather than a single shared token.
+// login.php evicts the least-recently-used row when a new login would
+// exceed the limit, so a session found valid here is exactly "one of this
+// account's currently allotted device slots". Checked once per request
+// (static cache) since it costs a DB round trip.
 function isSessionValid(): bool {
     global $pdo;
     if (!isLoggedIn()) return true;
     static $valid = null;
     if ($valid !== null) return $valid;
-    $stmt = $pdo->prepare('SELECT session_token FROM users WHERE id = :id');
+    $stmt = $pdo->prepare('SELECT session_token FROM user_sessions WHERE user_id = :id');
     $stmt->execute(['id' => $_SESSION['user_id']]);
-    $dbToken = $stmt->fetchColumn();
-    $valid = ($dbToken !== false && $dbToken !== null
-        && hash_equals((string) $dbToken, (string) ($_SESSION['session_token'] ?? '')));
+    $sessionToken = (string) ($_SESSION['session_token'] ?? '');
+    $valid = false;
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $dbToken) {
+        if (hash_equals((string) $dbToken, $sessionToken)) { $valid = true; break; }
+    }
+    // Touched only on a valid hit, not every request - this is what makes
+    // "least-recently-used" eviction actually track real activity instead
+    // of just login order (an idle-but-still-open tab should lose its slot
+    // before one someone is actively using right now).
+    if ($valid) {
+        $pdo->prepare('UPDATE user_sessions SET last_seen_at = NOW() WHERE user_id = :id AND session_token = :token')
+            ->execute(['id' => $_SESSION['user_id'], 'token' => $sessionToken]);
+    }
     return $valid;
 }
 

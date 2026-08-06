@@ -55,8 +55,12 @@ function normalizeGender(string $value): ?string {
     $v = strtoupper(trim($value));
     if ($v === '') return null;
     if (in_array($v, ['M', 'F', 'O'], true)) return $v;
-    if (str_starts_with($v, 'MALE')) return 'M';
-    if (str_starts_with($v, 'FEMALE')) return 'F';
+    // strncmp(), not str_starts_with() - the latter is PHP 8.0+ only, and
+    // this file needs to run on PHP 7.4 (found 2026-08-06: the production
+    // IIS site serves PHP 7.4, not the PHP 8.3 this app is normally tested
+    // against locally).
+    if (strncmp($v, 'MALE', 4) === 0) return 'M';
+    if (strncmp($v, 'FEMALE', 6) === 0) return 'F';
     return 'O';
 }
 
