@@ -17,13 +17,17 @@ $searchRegions = [
 // same-page state switching (a real navigation here, not a state swap).
 $searchRegionsExtra = [
     ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
-    // Open to every logged-in user (pan_india.php only calls requireLogin(),
-    // no per-user grant like LPG Search) - unconditional, unlike the block
-    // below. (Re-added 2026-08-04: this got silently deleted the same way
-    // the PAN India CSS did - a dev-tree sync overwrote this file, and dev
-    // never had this entry since pan_india.php only exists on live.)
-    ['label' => 'Pan India', 'href' => 'pan_india.php'],
 ];
+// Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
+// same as LPG Search below (2026-08-19 - previously unconditional for every
+// logged-in user; migrate_add_pan_india_access.sql defaults existing
+// accounts to still-granted, so this doesn't change anyone's access on its
+// own, it just makes it revocable). pan_india.php/api/pan_india.php enforce
+// the same check server-side, so this is purely about not showing a link
+// the user can't use, not the actual access control.
+if (hasPanIndiaAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Pan India', 'href' => 'pan_india.php'];
+}
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
 // only add the menu item at all when the current user has been granted it.
 // lpg_search.php enforces the same check server-side (403) regardless, so

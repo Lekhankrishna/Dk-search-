@@ -16,6 +16,15 @@ if (!isLoggedIn() || !isSessionValid()) {
     exit;
 }
 
+// Real enforcement, not just hiding the sidebar link - a revoked agent who
+// already has pan_india.php open (or hits this endpoint directly) must not
+// be able to keep searching.
+if (!hasPanIndiaAccess()) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Pan India Search access has not been granted for this account.']);
+    exit;
+}
+
 require_once __DIR__ . '/../includes/telegram_worker_client.php';
 require_once __DIR__ . '/../includes/pan_india_archive.php';
 set_time_limit(60);

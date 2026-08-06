@@ -26,6 +26,18 @@ jobs_lock = threading.Lock()
 
 MAX_NUMBERS = 10
 
+# Raised from 25 to 500 (2026-08-19, admin-only per explicit request). Must
+# match lpg_search.py's own hardcoded `mobile_numbers[:500]` inside
+# run_bulk_search() - can't import this constant there (app.py already
+# imports FROM lpg_search.py, so the reverse import would be circular), so
+# the two numbers have to be kept in sync by hand instead. Whichever number
+# wins here decides what "total" gets set to below; if run_bulk_search
+# truncates to something smaller, a job finishes with done < total forever -
+# looks exactly like the search got stuck partway through (found 2026-08-05
+# live, when these two numbers first drifted apart at 25 vs an uncapped
+# admin submission of 162).
+MAX_NUMBERS_ADMIN = 500
+
 # Nothing ever removed a finished job from `jobs` - for a server that stays
 # up for days/weeks, that's an unbounded memory leak, one entry per search
 # ever run. Anything finished more than an hour ago is pruned each time a
@@ -118,7 +130,11 @@ def start_search():
     if not numbers:
         return jsonify({"error": "No numbers provided"}), 400
 
-    numbers = numbers[:MAX_NUMBERS]
+    # lpg_search_api.php sets this from the caller's actual session role (not
+    # trusted from anywhere else reachable - this endpoint only ever hears
+    # from that PHP proxy over loopback, per the module-level comment above)
+    # so admins can run batches larger than the normal agent cap.
+    numbers = numbers[:MAX_NUMBERS_ADMIN] if data.get("isAdmin") else numbers[:MAX_NUMBERS]
 
     _prune_old_jobs()
 

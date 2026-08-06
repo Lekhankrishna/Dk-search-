@@ -26,6 +26,8 @@ require __DIR__ . '/includes/header.php';
   .lpg-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
   .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
   .lpg-btn-sm{padding:7px 16px;font-size:11px;}
+  .lpg-btn-export{background:#065f46;color:#fff;border:none;box-shadow:0 4px 18px rgba(6,95,70,.35);}
+  .lpg-btn-export:hover:not(:disabled){background:#054a37;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,95,70,.5);}
   #lpgStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .lpg-progress-wrap{margin-top:12px;display:none;}
   .lpg-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
@@ -81,7 +83,6 @@ require __DIR__ . '/includes/header.php';
 
 <div class="lpg-card">
   <div class="lpg-card-body">
-    <p class="lpg-hint">Enter a mobile number to look it up against your SDMS account.</p>
     <input type="text" id="lpgNumberBox" placeholder="9876543210"
            style="width:100%;padding:11px 16px;font-size:13px;color:#333;border:1px solid #e0e0e0;border-radius:9px;background:#fff;outline:none;">
     <div class="lpg-row">
@@ -103,7 +104,7 @@ require __DIR__ . '/includes/header.php';
 <div class="lpg-results-wrap" id="lpgResultsWrap" style="display:none;">
   <div class="lpg-results-toolbar">
     <span class="count" id="lpgResultsCount"></span>
-    <button id="lpgExportBtn" class="lpg-btn lpg-btn-secondary lpg-btn-sm" type="button">⬇ Export to Excel</button>
+    <button id="lpgExportBtn" class="lpg-btn lpg-btn-export lpg-btn-sm" type="button">⬇ Export to Excel</button>
   </div>
   <table class="lpg-table" id="lpgResultsTable">
     <thead>
@@ -281,7 +282,12 @@ function poll(jobId) {
 }
 
 searchBtn.addEventListener("click", async () => {
-  const number = numberBox.value.trim();
+  // Strips more than surrounding whitespace - a number pasted in the
+  // common "XXXXX XXXXX" Indian formatting (or with dashes) would
+  // otherwise be sent with the punctuation still in it and silently fail
+  // to match anything (found 2026-08-05, same root cause as bulk search's
+  // parseNumbers()).
+  const number = numberBox.value.replace(/\D+/g, "");
 
   if (!number) {
     statusEl.textContent = "Enter a mobile number.";

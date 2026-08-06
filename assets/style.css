@@ -978,15 +978,18 @@ div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{
 table.agents-table td{vertical-align:middle;padding:12px 14px;}
 table.agents-table thead th{white-space:nowrap;}
 
-/* Colour-coded columns (2026-08-03, toned down 2026-08-04) - same palette
-   as index.php, but this table is much busier (status/role badges, an
-   inline expiry-date form, four action buttons all sharing a row) so a
-   .55 cell tint was too loud and fought with them for attention - dropped
-   to a light .14 wash, gapped/rounded like the results table instead of
+/* Colour-coded columns (2026-08-03, toned down 2026-08-04, renumbered
+   2026-08-19 for the new Pan India Access column) - same palette as
+   index.php, but this table is much busier (status/role badges, an inline
+   expiry-date form, action buttons all sharing a row) so a .55 cell tint
+   was too loud and fought with them for attention - dropped to a light
+   .14 wash, gapped/rounded like the results table instead of
    solid-bordered, so columns read as separated without dominating.
    #accounts-table's ID gives the specificity needed to beat the plain
    .results-table thead th accent-purple rule. ID (col 1, just a number)
-   and Actions (col 10, has its own buttons) are left uncoloured. */
+   and Actions (col 10, has its own buttons) are left uncoloured. Pan India
+   Access (col 7) is purple to match Pan India's own accent colour
+   elsewhere in the app (pan_india.php's tabs/heading). */
 table#accounts-table{border-collapse:separate;border-spacing:4px;}
 table#accounts-table thead th{border-radius:7px;}
 table#accounts-table tbody td{border-radius:7px;}
@@ -995,15 +998,17 @@ table#accounts-table thead th:nth-child(3){background:rgb(234,88,12);}
 table#accounts-table thead th:nth-child(4){background:rgb(5,150,105);}
 table#accounts-table thead th:nth-child(5){background:rgb(13,148,136);}
 table#accounts-table thead th:nth-child(6){background:rgb(37,99,235);}
-table#accounts-table thead th:nth-child(7){background:rgb(217,119,6);}
-table#accounts-table thead th:nth-child(8){background:rgb(225,29,72);}
+table#accounts-table thead th:nth-child(7){background:rgb(124,58,237);}
+table#accounts-table thead th:nth-child(8){background:rgb(217,119,6);}
+table#accounts-table thead th:nth-child(9){background:rgb(225,29,72);}
 table#accounts-table tbody td:nth-child(2){background:rgba(219,39,119,.14);}
 table#accounts-table tbody td:nth-child(3){background:rgba(234,88,12,.14);}
 table#accounts-table tbody td:nth-child(4){background:rgba(5,150,105,.14);}
 table#accounts-table tbody td:nth-child(5){background:rgba(13,148,136,.14);}
 table#accounts-table tbody td:nth-child(6){background:rgba(37,99,235,.14);}
-table#accounts-table tbody td:nth-child(7){background:rgba(217,119,6,.14);}
-table#accounts-table tbody td:nth-child(8){background:rgba(225,29,72,.14);}
+table#accounts-table tbody td:nth-child(7){background:rgba(124,58,237,.14);}
+table#accounts-table tbody td:nth-child(8){background:rgba(217,119,6,.14);}
+table#accounts-table tbody td:nth-child(9){background:rgba(225,29,72,.14);}
 
 /* Colour-coded columns (2026-08-03), same palette/approach - Audit Log. */
 table#log-table thead th:nth-child(1){background:rgb(219,39,119);}

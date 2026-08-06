@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password  = $_POST['password']       ?? '';
         $role      = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
         $expiresAtSql = $expiresDate !== '' ? "$expiresDate $expiresTime:00" : null;
@@ -25,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, pan_india_access, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :pan_india_access, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -36,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                     'role'      => $role,
                     'lpg_access'=> $lpgAccess,
+                    'pan_india_access' => $panIndiaAccess,
                     'expires_at'=> $expiresAtSql,
                 ]);
                 $message = "Account <strong>" . htmlspecialchars($username) . "</strong> created successfully.";
@@ -51,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mobileNo = trim($_POST['mobile_no'] ?? '');
         $role     = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $newPassword  = $_POST['new_password'] ?? '';
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
@@ -63,13 +66,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, pan_india_access = :pan_india_access, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
                 'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                 'role'      => $role,
                 'lpg_access'=> $lpgAccess,
+                'pan_india_access' => $panIndiaAccess,
                 'expires_at'=> $expiresAtSql,
                 'id'        => $id,
             ];
@@ -97,6 +101,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle_lpg') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET lpg_search_access = 1 - lpg_search_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_pan_india') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET pan_india_access = 1 - pan_india_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
     } elseif ($action === 'regenerate_lpg_key') {
         // Invalidates that agent's current bookmarklet immediately — the next
@@ -133,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, pan_india_access, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
 )->fetchAll();
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
@@ -215,6 +223,9 @@ require __DIR__ . '/../includes/header.php';
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)">
       <input type="checkbox" name="lpg_search_access" value="1" style="width:auto"> LPG Search Access
     </label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)">
+      <input type="checkbox" name="pan_india_access" value="1" style="width:auto"> Pan India Access
+    </label>
     <input type="text" name="expires_date" placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" maxlength="10"
            title="Expiry date, DD/MM/YYYY (leave blank for no expiry)" style="min-width:140px">
     <input type="time" name="expires_time" title="Expiry time (defaults to 00:00)" style="min-width:110px">
@@ -252,6 +263,7 @@ require __DIR__ . '/../includes/header.php';
           <th style="width:80px">Role</th>
           <th style="width:85px">Status</th>
           <th style="width:105px">LPG Access</th>
+          <th style="width:115px">Pan India Access</th>
           <th style="width:170px">Created</th>
           <th>Set Expiry</th>
           <th style="width:220px">Actions</th>
@@ -284,6 +296,11 @@ require __DIR__ . '/../includes/header.php';
               <?= $u['lpg_search_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
           </td>
+          <td>
+            <span class="badge <?= $u['pan_india_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['pan_india_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+          </td>
           <td class="text-sm text-muted"><?= htmlspecialchars($u['created_at']) ?></td>
           <td>
             <form method="post" class="expiry-form">
@@ -307,7 +324,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
             <form method="post" style="display:inline">
@@ -316,6 +333,14 @@ require __DIR__ . '/../includes/header.php';
               <button type="submit" class="btn btn-sm <?= $u['lpg_search_access'] ? 'btn-warning' : 'btn-secondary' ?>"
                       title="<?= $u['lpg_search_access'] ? 'Revoke LPG Search access' : 'Grant LPG Search access' ?>">
                 <i class="bi bi-fuel-pump-fill"></i> <?= $u['lpg_search_access'] ? 'Revoke LPG' : 'Grant LPG' ?>
+              </button>
+            </form>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="toggle_pan_india">
+              <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
+              <button type="submit" class="btn btn-sm <?= $u['pan_india_access'] ? 'btn-warning' : 'btn-secondary' ?>"
+                      title="<?= $u['pan_india_access'] ? 'Revoke Pan India access' : 'Grant Pan India access' ?>">
+                <i class="bi bi-globe-asia-australia"></i> <?= $u['pan_india_access'] ? 'Revoke Pan India' : 'Grant Pan India' ?>
               </button>
             </form>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -392,6 +417,12 @@ require __DIR__ . '/../includes/header.php';
         </label>
       </div>
       <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" name="pan_india_access" id="edit-pan_india_access" value="1" style="width:auto">
+          Pan India Access
+        </label>
+      </div>
+      <div class="form-group">
         <label class="form-label">Expiry Date &amp; Time</label>
         <div style="display:flex;gap:8px">
           <input type="text" class="form-control" name="expires_date" id="edit-expires_date"
@@ -418,13 +449,14 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, panIndiaAccess, expiresDate, expiresTime) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
   document.getElementById('edit-mobile_no').value = mobileNo;
   document.getElementById('edit-role').value = role;
   document.getElementById('edit-lpg_search_access').checked = !!lpgAccess;
+  document.getElementById('edit-pan_india_access').checked = !!panIndiaAccess;
   document.getElementById('edit-expires_date').value = expiresDate;
   document.getElementById('edit-expires_time').value = expiresTime;
   document.getElementById('edit-new_password').value = '';

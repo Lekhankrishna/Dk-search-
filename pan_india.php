@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/includes/auth.php';
-requireLogin();
+requirePanIndiaAccess();
 $user = currentUser();
 require __DIR__ . '/includes/header.php';
 ?>

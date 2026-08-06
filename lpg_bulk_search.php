@@ -29,6 +29,8 @@ require __DIR__ . '/includes/header.php';
   .lpg-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
   .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
   .lpg-btn-sm{padding:7px 16px;font-size:11px;}
+  .lpg-btn-export{background:#065f46;color:#fff;border:none;box-shadow:0 4px 18px rgba(6,95,70,.35);}
+  .lpg-btn-export:hover:not(:disabled){background:#054a37;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,95,70,.5);}
   #lpgStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .lpg-progress-wrap{margin-top:12px;display:none;}
   .lpg-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
@@ -84,7 +86,6 @@ require __DIR__ . '/includes/header.php';
 
 <div class="lpg-card">
   <div class="lpg-card-body">
-    <p class="lpg-hint">Paste several mobile numbers (comma, space, or new line separated, up to 10) — each is looked up against your SDMS account.</p>
     <textarea id="lpgNumbersBox" class="lpg-textarea" placeholder="9876543210, 9876543211, ..."></textarea>
     <div class="lpg-row">
       <button id="lpgSearchBtn" class="lpg-btn">Bulk Search</button>
@@ -105,7 +106,7 @@ require __DIR__ . '/includes/header.php';
 <div class="lpg-results-wrap" id="lpgResultsWrap" style="display:none;">
   <div class="lpg-results-toolbar">
     <span class="count" id="lpgResultsCount"></span>
-    <button id="lpgExportBtn" class="lpg-btn lpg-btn-secondary lpg-btn-sm" type="button">⬇ Export to Excel</button>
+    <button id="lpgExportBtn" class="lpg-btn lpg-btn-export lpg-btn-sm" type="button">⬇ Export to Excel</button>
   </div>
   <table class="lpg-table" id="lpgResultsTable">
     <thead>
@@ -127,6 +128,12 @@ require __DIR__ . '/includes/header.php';
 </div>
 
 <script>
+const IS_ADMIN = <?= (currentUser()['role'] ?? '') === 'admin' ? 'true' : 'false' ?>;
+// 500 (not Infinity) even for admins - the backend (lpg_search.py's
+// run_bulk_search) has its own hard ceiling per job regardless of role, so
+// letting the UI accept more than that just means the excess gets silently
+// dropped server-side with no explanation.
+const BULK_NUMBER_LIMIT = IS_ADMIN ? 500 : 10;
 const searchBtn = document.getElementById("lpgSearchBtn");
 const clearBtn = document.getElementById("lpgClearBtn");
 const refreshBtn = document.getElementById("lpgRefreshBtn");
@@ -179,11 +186,32 @@ function updateProgress(done, total, status) {
 }
 
 function parseNumbers(raw) {
-  return raw
+  const tokens = raw
     .split(/[\s,]+/)
     .map(s => s.trim())
-    .filter(s => s.length > 0)
-    .slice(0, 10);
+    .filter(s => s.length > 0);
+
+  // Merge "XXXXX XXXXX" formatted Indian mobile numbers (a common way
+  // they're written/copied - contact exports, business cards, SDMS itself)
+  // back into one 10-digit number, instead of splitting on that internal
+  // space (found 2026-08-05 live: "9901431238" pasted as "99014 31238"
+  // silently became two garbage 5-digit searches instead of one real one).
+  // Also strips any other punctuation (dashes, etc.) from every token, so a
+  // dash-formatted number like "9901-431238" doesn't survive as one
+  // unsearchable non-numeric string either.
+  const merged = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const cur = tokens[i].replace(/\D+/g, "");
+    const next = tokens[i + 1] ? tokens[i + 1].replace(/\D+/g, "") : "";
+    if (cur.length === 5 && next.length === 5) {
+      merged.push(cur + next);
+      i++;
+    } else if (cur.length > 0) {
+      merged.push(cur);
+    }
+  }
+
+  return merged.slice(0, BULK_NUMBER_LIMIT);
 }
 
 function cell(value, cls) {

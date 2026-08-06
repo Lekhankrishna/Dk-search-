@@ -458,7 +458,12 @@ def run_bulk_search(mobile_numbers, progress_callback=None):
     after each number is processed, if provided.
     """
 
-    mobile_numbers = mobile_numbers[:25]
+    # Raised from 25 to 500 (2026-08-19, admin-only per explicit request) -
+    # must match app.py's MAX_NUMBERS_ADMIN. Can't import that constant here
+    # (app.py already imports run_bulk_search FROM this module, so the
+    # reverse import would be circular) - see app.py's own comment on
+    # MAX_NUMBERS_ADMIN for what goes wrong if these two drift apart again.
+    mobile_numbers = mobile_numbers[:500]
 
     results = []
 
@@ -549,7 +554,7 @@ def run_bulk_search(mobile_numbers, progress_callback=None):
 if __name__ == "__main__":
 
     print("Enter mobile numbers for bulk search")
-    print("(separate by comma, space, or new line - up to 25 numbers).")
+    print("(separate by comma, space, or new line - up to 500 numbers).")
     print("Press ENTER on a blank line when done:\n")
 
     raw_lines = []
