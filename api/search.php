@@ -710,8 +710,9 @@ foreach ($searchTables as $entry) {
         }
         if ($pincodeFilterPrefix !== null) {
             // strncmp(), not str_starts_with() - the latter is PHP 8.0+ only,
-            // and this file needs to stay compatible with the production IIS
-            // site, which serves PHP 7.4 (found 2026-08-06).
+            // and this file needs to run on PHP 7.4 (found 2026-08-06: the
+            // production IIS site serves PHP 7.4, not the PHP 8.3 this app
+            // is normally tested against locally).
             $rows = array_values(array_filter($rows, fn($r) => strncmp((string) ($r['pincode'] ?? ''), $pincodeFilterPrefix, strlen($pincodeFilterPrefix)) === 0));
         }
 
@@ -849,4 +850,3 @@ try {
 } catch (PDOException $e) {}
 
 echo json_encode(['ok' => true, 'rows' => $allRows, 'queryMs' => $queryMs]);
-

@@ -144,6 +144,30 @@ function requireEagleEyeAccess(string $loginPath = 'login.php'): void {
     }
 }
 
+// Same pattern as hasLpgSearchAccess() - checked fresh from the DB every
+// request so a revoke from Admin > Agents takes effect immediately. Defaults
+// to granted for existing accounts (see migrate_add_pan_india_access.sql);
+// this function is what admin/agents.php's per-agent toggle actually
+// controls going forward.
+function hasPanIndiaAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT pan_india_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requirePanIndiaAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasPanIndiaAccess()) {
+        http_response_code(403);
+        die('Access denied: Pan India Search access has not been granted for this account.');
+    }
+}
+
 // Global settings row (id = 1) — created by migrate_add_whatsapp_button.sql.
 // Cached per-request; an admin's save on whatsapp_settings.php takes effect
 // on the very next request for every user, not just after their next login.

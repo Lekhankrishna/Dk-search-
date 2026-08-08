@@ -1,0 +1,5 @@
+<?php
+// Copy to telegram.php and enter the server-only Telegram application values.
+$TELEGRAM_API_ID = 0;
+$TELEGRAM_API_HASH = 'REPLACE_WITH_API_HASH';
+$TELEGRAM_BOT_MATCH = 'sugali';

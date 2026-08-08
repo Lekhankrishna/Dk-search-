@@ -28,6 +28,16 @@ $searchRegionsExtra = [
 if (hasRcPrintAccess()) {
     $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
 }
+// Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
+// same as LPG Search below (2026-08-19 - previously unconditional for every
+// logged-in user; migrate_add_pan_india_access.sql defaults existing
+// accounts to still-granted, so this doesn't change anyone's access on its
+// own, it just makes it revocable). pan_india.php/api/pan_india.php enforce
+// the same check server-side, so this is purely about not showing a link
+// the user can't use, not the actual access control.
+if (hasPanIndiaAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Pan India', 'href' => 'pan_india.php'];
+}
 // Advance Pan India is opt-in per account (Admin > Agents > "Advance Pan
 // India Access") - backed by theeagleeye.biz's Advanced Search tool via
 // includes/eagleeye_client.php (plain PHP+curl, no browser automation
