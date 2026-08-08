@@ -6,8 +6,34 @@ import traceback
 import uuid
 
 from lpg_search import run_bulk_search
+from rc_print import run_rc_print
+from hp_gas import run_hp_gas_single
 
 app = Flask(__name__)
+
+
+def clean_error_message(e):
+    """
+    Selenium's WebDriverException (and friends) dump their entire native
+    ChromeDriver stacktrace - dozens of lines of "chromedriver!GetHandleVerifier
+    [0x...]" - straight into str(e), since that IS the exception's message,
+    not something separate a caller can opt out of. Left as-is that lands
+    verbatim in the JSON error field and gets rendered straight into the
+    page (found 2026-08-08 live) - useless and alarming to whoever's running
+    a search, not just ugly. The real detail is still in this server's own
+    console log (see the traceback.format_exc() print right before this is
+    called) for whoever's actually debugging it; this is only what the
+    agent using the tool sees.
+    """
+    first_line = str(e).split("\n", 1)[0].split("Stacktrace:", 1)[0].strip()
+    # Selenium's own WebDriverException.__str__ prefixes even a genuinely
+    # empty message with "Message:" - stripping it bare (found 2026-08-08,
+    # a real crash on this server left literally "Message:" as the only
+    # visible text) so an empty message actually falls through to the
+    # generic fallback below instead of showing that half-formed leftover.
+    if first_line.lower().startswith("message:"):
+        first_line = first_line[len("message:"):].strip()
+    return first_line or "An unexpected error occurred. Please try again or contact your admin."
 
 # Runs centrally on the CRM server itself (found 2026-07-27) rather than one
 # copy per agent's computer - lpg_search_api.php (server-side PHP, not the
@@ -116,7 +142,7 @@ def _run_job(job_id, numbers):
         print(f"[job {job_id}] FAILED:\n{full_trace}")
         with jobs_lock:
             jobs[job_id]["status"] = "failed"
-            jobs[job_id]["error"] = str(e)
+            jobs[job_id]["error"] = clean_error_message(e)
             jobs[job_id]["traceback"] = full_trace
             jobs[job_id]["finished_at"] = time.time()
 
@@ -196,6 +222,52 @@ def get_search(job_id):
             "error": job.get("error"),
             "queuePosition": queue_position,
         })
+
+
+@app.route("/api/rc-print", methods=["POST"])
+def rc_print():
+    data = request.get_json(silent=True) or {}
+    vehicle_number = str(data.get("vehicleNumber", "")).strip()
+
+    if not vehicle_number:
+        return jsonify({"error": "No vehicle number provided"}), 400
+
+    # Single lookup, run synchronously (unlike /api/search's job-queue +
+    # polling, which exists for batches of up to 500 numbers) - one vehicle
+    # in, one PDF out, so there's nothing to report incremental progress on.
+    # Shares selenium_semaphore with LPG bulk search so the two tools'
+    # Chrome sessions never together exceed MAX_CONCURRENT_SEARCHES on this
+    # box's fixed core count.
+    with selenium_semaphore:
+        try:
+            result = run_rc_print(vehicle_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[rc-print {vehicle_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/hp-gas", methods=["POST"])
+def hp_gas():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print - single lookup, synchronous, sharing
+    # selenium_semaphore with LPG bulk search and RC Print.
+    with selenium_semaphore:
+        try:
+            result = run_hp_gas_single(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[hp-gas {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":

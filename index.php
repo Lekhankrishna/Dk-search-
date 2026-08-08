@@ -6,6 +6,15 @@ require __DIR__ . '/includes/header.php';
 ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
+<!-- Confetti overlay (2026-08-08) - populated/cleared by startConfetti()/
+     stopConfetti() below, only while a search has actually returned rows.
+     Fixed to the right-hand content panel only (offset past the sidebar,
+     see .confetti-container CSS) so it never covers the sidebar, and spans
+     the full panel height rather than being boxed into the results card.
+     pointer-events:none the whole way down so it never blocks clicking
+     anything underneath it. -->
+<div class="confetti-container" id="confetti-container"></div>
+
 <h1 class="page-title-main" id="page-title">LOOKUP</h1>
 
 <!-- ── Search Panel ── -->
@@ -416,6 +425,7 @@ async function runSearch(p) {
     card.style.display='';
     dataTable.columns.adjust();
     card.scrollIntoView({behavior:'smooth',block:'start'});
+    if (data.rows.length > 0) startConfetti(); else stopConfetti();
   } catch (err) {
     alert('Search failed: could not reach the server. Please check your connection and try again.');
   } finally { btn.innerHTML='<i class="bi bi-search"></i> Search'; btn.disabled=false; }
@@ -426,11 +436,15 @@ searchForm.addEventListener('submit', e => {
   runSearch(buildSearchParams());
 });
 
+/* Confetti - startConfetti()/stopConfetti() come from the shared
+   assets/confetti.js (loaded in includes/footer.php on every page). */
+
 /* Clear */
 function clearSearch() {
   document.getElementById('search-form').reset();
   document.querySelectorAll('.sp-input').forEach(el => el.value = '');
   document.getElementById('results-card').style.display = 'none';
+  stopConfetti();
   lastResults = [];
 }
 

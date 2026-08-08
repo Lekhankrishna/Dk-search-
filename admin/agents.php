@@ -16,6 +16,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password  = $_POST['password']       ?? '';
         $role      = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $rcPrintAccess = isset($_POST['rc_print_access']) ? 1 : 0;
+        $rcPrintMonthlyLimit = max(0, (int) ($_POST['rc_print_monthly_limit'] ?? 5));
+        $hpGasAccess = isset($_POST['hp_gas_access']) ? 1 : 0;
+        $hpGasMonthlyLimit = max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5));
+        $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
+        $eagleEyeMonthlyLimit = max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
@@ -26,8 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, max_concurrent_sessions, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :max_sessions, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, max_concurrent_sessions, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :max_sessions, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -37,6 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                     'role'      => $role,
                     'lpg_access'=> $lpgAccess,
+                    'rc_print_access' => $rcPrintAccess,
+                    'rc_print_monthly_limit' => $rcPrintMonthlyLimit,
+                    'hp_gas_access' => $hpGasAccess,
+                    'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
+                    'eagle_eye_access' => $eagleEyeAccess,
+                    'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                     'max_sessions' => $maxSessions,
                     'expires_at'=> $expiresAtSql,
                 ]);
@@ -53,6 +65,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mobileNo = trim($_POST['mobile_no'] ?? '');
         $role     = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $rcPrintAccess = isset($_POST['rc_print_access']) ? 1 : 0;
+        $rcPrintMonthlyLimit = max(0, (int) ($_POST['rc_print_monthly_limit'] ?? 5));
+        $hpGasAccess = isset($_POST['hp_gas_access']) ? 1 : 0;
+        $hpGasMonthlyLimit = max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5));
+        $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
+        $eagleEyeMonthlyLimit = max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $newPassword  = $_POST['new_password'] ?? '';
         $expiresDate  = trim($_POST['expires_date'] ?? '');
@@ -66,13 +84,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
                 'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                 'role'      => $role,
                 'lpg_access'=> $lpgAccess,
+                'rc_print_access' => $rcPrintAccess,
+                'rc_print_monthly_limit' => $rcPrintMonthlyLimit,
+                'hp_gas_access' => $hpGasAccess,
+                'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
+                'eagle_eye_access' => $eagleEyeAccess,
+                'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                 'max_sessions' => $maxSessions,
                 'expires_at'=> $expiresAtSql,
                 'id'        => $id,
@@ -105,6 +129,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle_lpg') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET lpg_search_access = 1 - lpg_search_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_rc_print') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET rc_print_access = 1 - rc_print_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_hp_gas') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET hp_gas_access = 1 - hp_gas_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_eagle_eye') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET eagle_eye_access = 1 - eagle_eye_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
     } elseif ($action === 'regenerate_lpg_key') {
         // Invalidates that agent's current bookmarklet immediately — the next
@@ -142,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
 )->fetchAll();
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
@@ -164,6 +200,73 @@ foreach ($users as $u) {
 $basePath = '../';
 require __DIR__ . '/../includes/header.php';
 ?>
+
+<style>
+  /* Compact create-account layout (2026-08-08) - the flat inline-form flex
+     row this used to be stopped fitting once RC Print/HP Gas/Advance Pan
+     India each added their own access checkbox + monthly-limit number
+     input on top of the original LPG Search checkbox, so everything's
+     grouped into rows/a grid here instead of one long wrap. */
+  .agent-create-form{padding:16px 20px;background:var(--c-surface-2);border-bottom:1px solid var(--c-border);}
+  .acf-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .acf-row:last-child{margin-bottom:0;}
+  .acf-row input[type=text],.acf-row input[type=tel],.acf-row input[type=password],
+  .acf-row input[type=time],.acf-row select{
+    padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);
+    font-family:var(--font);font-size:13px;outline:none;
+    background:var(--c-surface);transition:border-color var(--t),box-shadow var(--t);color:var(--c-text);
+  }
+  .acf-row input:focus,.acf-row select:focus{border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-accent-glow);}
+  .acf-section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--c-text-soft);margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .acf-section-label i{color:var(--c-accent);font-size:12px;}
+  .acf-feature-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:14px;}
+  .acf-feature{position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;
+    border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);
+    font-size:12.5px;font-weight:600;color:var(--c-text);cursor:pointer;
+    transition:border-color 150ms,background 150ms,box-shadow 150ms,transform 150ms;}
+  .acf-feature:hover{border-color:var(--c-accent);transform:translateY(-1px);}
+  .acf-feature:has(input:checked){background:var(--c-accent-light);border-color:var(--c-accent);
+    box-shadow:0 2px 10px rgba(79,70,229,.2);color:var(--c-accent-hover);}
+  .acf-feature input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--c-accent);cursor:pointer;}
+  .acf-feature span{flex:1;}
+  .acf-feature .acf-limit{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:11px;font-weight:500;color:var(--c-text-soft);}
+  .acf-feature:has(input:checked) .acf-limit{color:var(--c-accent-hover);}
+  .acf-feature .acf-limit input{width:44px;padding:3px 5px;border:1px solid var(--c-border);border-radius:6px;
+    background:var(--c-surface);color:var(--c-text);font-size:11.5px;text-align:center;font-weight:600;}
+  .acf-inline-field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--c-text);white-space:nowrap;}
+  .acf-inline-field input{width:56px;padding:8px 10px;border:1px solid var(--c-border);border-radius:var(--r-md);
+    background:var(--c-surface);color:var(--c-text);font-size:13px;outline:none;}
+
+  /* Edit modal widened (2026-08-08, widened further same day) - the shared
+     .modal-box max-width (420px, used by every modal in the app) left
+     almost no room once Feature Access grew to 5 checkboxes + 3
+     monthly-limit inputs; scoped to just this modal via its own ID rather
+     than raising the shared default, which other (genuinely small) modals
+     elsewhere still want. Wide enough that basic info fits one row of 4,
+     Feature Access one row of 5, and Max Logins/Expiry one row of 3 - the
+     goal being everything visible without scrolling on a normal desktop
+     window, not just "a bit more room". */
+  #edit-modal-overlay .modal-box{max-width:960px;width:96vw;}
+  #edit-modal-overlay .edit-basic-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 16px;}
+  #edit-modal-overlay .edit-basic-grid .form-group{margin-bottom:14px;}
+  #edit-modal-overlay .acf-feature-grid{grid-template-columns:repeat(5,1fr);}
+  #edit-modal-overlay .edit-settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0 16px;align-items:end;}
+  #edit-modal-overlay .edit-settings-grid .form-group{margin-bottom:14px;}
+  @media (max-width:900px){
+    #edit-modal-overlay .acf-feature-grid{grid-template-columns:repeat(3,1fr);}
+  }
+  @media (max-width:700px){
+    #edit-modal-overlay .edit-basic-grid{grid-template-columns:1fr 1fr;}
+    #edit-modal-overlay .edit-settings-grid{grid-template-columns:1fr 1fr;}
+    #edit-modal-overlay .acf-feature-grid{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width:560px){
+    #edit-modal-overlay .edit-basic-grid{grid-template-columns:1fr;}
+    #edit-modal-overlay .edit-settings-grid{grid-template-columns:1fr;}
+    #edit-modal-overlay .acf-feature-grid{grid-template-columns:1fr;}
+  }
+</style>
 
 <div class="page-header">
   <h1 class="page-title"><i class="bi bi-people-fill"></i> Manage Agents &amp; Admins</h1>
@@ -206,35 +309,67 @@ require __DIR__ . '/../includes/header.php';
     <i class="bi bi-person-plus-fill" style="color:var(--c-accent)"></i>
     <span class="card-title">Create New Account</span>
   </div>
-  <form method="post" class="inline-form">
+  <form method="post" class="agent-create-form">
     <input type="hidden" name="action" value="create">
-    <input type="text"     name="username"   placeholder="Username"          required style="min-width:130px">
-    <input type="text"     name="full_name"  placeholder="Full Name"         required style="min-width:160px">
-    <input type="tel"      name="mobile_no"  placeholder="Mobile Number (optional)" style="min-width:170px">
-    <div class="password-field-wrap" style="min-width:160px">
-      <input type="password" name="password" id="create-password" placeholder="Password (min 6)" required minlength="6" style="width:100%">
-      <button type="button" class="password-toggle-btn" id="create-password-toggle-btn" aria-label="Show password">
-        <i class="bi bi-eye-fill" id="create-password-toggle-icon"></i>
+
+    <div class="acf-row">
+      <input type="text"     name="username"   placeholder="Username"          required style="min-width:130px">
+      <input type="text"     name="full_name"  placeholder="Full Name"         required style="min-width:160px">
+      <input type="tel"      name="mobile_no"  placeholder="Mobile Number (optional)" style="min-width:170px">
+      <div class="password-field-wrap" style="min-width:160px">
+        <input type="password" name="password" id="create-password" placeholder="Password (min 6)" required minlength="6" style="width:100%">
+        <button type="button" class="password-toggle-btn" id="create-password-toggle-btn" aria-label="Show password">
+          <i class="bi bi-eye-fill" id="create-password-toggle-icon"></i>
+        </button>
+      </div>
+      <select name="role" style="min-width:110px">
+        <option value="agent">Agent</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+
+    <div class="acf-section-label"><i class="bi bi-shield-lock-fill"></i> Feature Access</div>
+    <div class="acf-feature-grid">
+      <label class="acf-feature">
+        <input type="checkbox" name="lpg_search_access" value="1">
+        <span>LPG Search</span>
+      </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="rc_print_access" value="1">
+        <span>RC Print</span>
+        <span class="acf-limit" title="How many RC Print searches this agent can run per calendar month - each one spends real credits on the shared locateme.services account. Ignored for admins.">
+          <input type="number" name="rc_print_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="hp_gas_access" value="1">
+        <span>HP Gas Advanced</span>
+        <span class="acf-limit" title="How many HP Gas Advanced searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
+          <input type="number" name="hp_gas_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="eagle_eye_access" value="1">
+        <span>Advance Pan India</span>
+        <span class="acf-limit" title="How many Advance Pan India searches this agent can run per calendar month - shares a single monthly plan pool on theeagleeye.biz. Ignored for admins.">
+          <input type="number" name="eagle_eye_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+    </div>
+
+    <div class="acf-row">
+      <label class="acf-inline-field"
+             title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
+        Max Logins
+        <input type="number" name="max_concurrent_sessions" value="1" min="1" max="50">
+      </label>
+      <input type="text" name="expires_date" placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" maxlength="10"
+             title="Expiry date, DD/MM/YYYY (leave blank for no expiry)" style="min-width:140px">
+      <input type="time" name="expires_time" title="Expiry time (defaults to 00:00)" style="min-width:110px">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-person-plus"></i> Create Account
       </button>
     </div>
-    <select name="role" style="min-width:110px">
-      <option value="agent">Agent</option>
-      <option value="admin">Admin</option>
-    </select>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)">
-      <input type="checkbox" name="lpg_search_access" value="1" style="width:auto"> LPG Search Access
-    </label>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;color:var(--c-text)"
-           title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
-      Max Simultaneous Logins
-      <input type="number" name="max_concurrent_sessions" value="1" min="1" max="50" style="width:60px">
-    </label>
-    <input type="text" name="expires_date" placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" maxlength="10"
-           title="Expiry date, DD/MM/YYYY (leave blank for no expiry)" style="min-width:140px">
-    <input type="time" name="expires_time" title="Expiry time (defaults to 00:00)" style="min-width:110px">
-    <button type="submit" class="btn btn-primary btn-sm">
-      <i class="bi bi-person-plus"></i> Create Account
-    </button>
   </form>
 </div>
 
@@ -266,6 +401,9 @@ require __DIR__ . '/../includes/header.php';
           <th>Role</th>
           <th>Status</th>
           <th>LPG</th>
+          <th>RC Print</th>
+          <th>HP Gas</th>
+          <th>Adv. Pan India</th>
           <th>Set Expiry</th>
           <th>Actions</th>
         </tr>
@@ -298,6 +436,30 @@ require __DIR__ . '/../includes/header.php';
             </span>
           </td>
           <td>
+            <span class="badge <?= $u['rc_print_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['rc_print_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['rc_print_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['rc_print_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['hp_gas_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['hp_gas_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['hp_gas_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['hp_gas_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['eagle_eye_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['eagle_eye_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['eagle_eye_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['eagle_eye_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
             <form method="post" class="expiry-form">
               <input type="hidden" name="action" value="set_expiry">
               <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
@@ -319,17 +481,9 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
-            <form method="post" style="display:inline">
-              <input type="hidden" name="action" value="toggle_lpg">
-              <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
-              <button type="submit" class="btn btn-sm <?= $u['lpg_search_access'] ? 'btn-warning' : 'btn-secondary' ?>"
-                      title="<?= $u['lpg_search_access'] ? 'Revoke LPG Search access' : 'Grant LPG Search access' ?>">
-                <i class="bi bi-fuel-pump-fill"></i> LPG
-              </button>
-            </form>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
               <form method="post" style="display:inline"
                     onsubmit="return confirm('Reset <?= htmlspecialchars($u['username'], ENT_QUOTES) ?>\'s LPG bookmarklet? Their current one will stop working until they revisit LPG Search.')">
@@ -370,44 +524,73 @@ require __DIR__ . '/../includes/header.php';
     <form method="post" id="edit-form">
       <input type="hidden" name="action" value="edit">
       <input type="hidden" name="id" id="edit-id">
-      <div class="form-group">
-        <label class="form-label" for="edit-username">Username</label>
-        <input type="text" class="form-control" name="username" id="edit-username" required>
+      <div class="edit-basic-grid">
+        <div class="form-group">
+          <label class="form-label" for="edit-username">Username</label>
+          <input type="text" class="form-control" name="username" id="edit-username" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-full_name">Full Name</label>
+          <input type="text" class="form-control" name="full_name" id="edit-full_name" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-mobile_no">Mobile Number</label>
+          <input type="tel" class="form-control" name="mobile_no" id="edit-mobile_no" placeholder="Optional">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-role">Role</label>
+          <select class="form-control" name="role" id="edit-role">
+            <option value="agent">Agent</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label" for="edit-full_name">Full Name</label>
-        <input type="text" class="form-control" name="full_name" id="edit-full_name" required>
+        <label class="form-label"><i class="bi bi-shield-lock-fill"></i> Feature Access</label>
+        <div class="acf-feature-grid">
+          <label class="acf-feature">
+            <input type="checkbox" name="lpg_search_access" id="edit-lpg_search_access" value="1">
+            <span>LPG Search</span>
+          </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="rc_print_access" id="edit-rc_print_access" value="1">
+            <span>RC Print</span>
+            <span class="acf-limit" title="How many RC Print searches this agent can run per calendar month - each one spends real credits on the shared locateme.services account. Ignored for admins.">
+              <input type="number" name="rc_print_monthly_limit" id="edit-rc_print_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="hp_gas_access" id="edit-hp_gas_access" value="1">
+            <span>HP Gas Advanced</span>
+            <span class="acf-limit" title="How many HP Gas Advanced searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
+              <input type="number" name="hp_gas_monthly_limit" id="edit-hp_gas_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="eagle_eye_access" id="edit-eagle_eye_access" value="1">
+            <span>Advance Pan India</span>
+            <span class="acf-limit" title="How many Advance Pan India searches this agent can run per calendar month - shares a single monthly plan pool on theeagleeye.biz. Ignored for admins.">
+              <input type="number" name="eagle_eye_monthly_limit" id="edit-eagle_eye_monthly_limit" value="5" min="0" max="500" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label" for="edit-mobile_no">Mobile Number</label>
-        <input type="tel" class="form-control" name="mobile_no" id="edit-mobile_no" placeholder="Optional">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="edit-role">Role</label>
-        <select class="form-control" name="role" id="edit-role">
-          <option value="agent">Agent</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" name="lpg_search_access" id="edit-lpg_search_access" value="1" style="width:auto">
-          LPG Search Access
-        </label>
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="edit-max_concurrent_sessions"
-               title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
-          Max Simultaneous Logins
-        </label>
-        <input type="number" class="form-control" name="max_concurrent_sessions" id="edit-max_concurrent_sessions"
-               value="1" min="1" max="50" style="width:100px">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Expiry Date &amp; Time</label>
-        <div style="display:flex;gap:8px">
+      <div class="edit-settings-grid">
+        <div class="form-group">
+          <label class="form-label" for="edit-max_concurrent_sessions"
+                 title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
+            Max Simultaneous Logins
+          </label>
+          <input type="number" class="form-control" name="max_concurrent_sessions" id="edit-max_concurrent_sessions"
+                 value="1" min="1" max="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-expires_date">Expiry Date</label>
           <input type="text" class="form-control" name="expires_date" id="edit-expires_date"
                  placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" maxlength="10" title="DD/MM/YYYY — leave blank for no expiry">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-expires_time">Expiry Time</label>
           <input type="time" class="form-control" name="expires_time" id="edit-expires_time" title="Defaults to 00:00">
         </div>
       </div>
@@ -430,13 +613,19 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, maxSessions, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, maxSessions, expiresDate, expiresTime) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
   document.getElementById('edit-mobile_no').value = mobileNo;
   document.getElementById('edit-role').value = role;
   document.getElementById('edit-lpg_search_access').checked = !!lpgAccess;
+  document.getElementById('edit-rc_print_access').checked = !!rcPrintAccess;
+  document.getElementById('edit-rc_print_monthly_limit').value = rcPrintMonthlyLimit;
+  document.getElementById('edit-hp_gas_access').checked = !!hpGasAccess;
+  document.getElementById('edit-hp_gas_monthly_limit').value = hpGasMonthlyLimit;
+  document.getElementById('edit-eagle_eye_access').checked = !!eagleEyeAccess;
+  document.getElementById('edit-eagle_eye_monthly_limit').value = eagleEyeMonthlyLimit;
   document.getElementById('edit-max_concurrent_sessions').value = maxSessions;
   document.getElementById('edit-expires_date').value = expiresDate;
   document.getElementById('edit-expires_time').value = expiresTime;
@@ -480,7 +669,7 @@ function parseExpiryDate(s) {
   const d = +m[1], mo = +m[2], y = +m[3];
   return expiryDateValid(y, mo, d) ? `${y}-${expiryDatePad(mo)}-${expiryDatePad(d)}` : null;
 }
-document.querySelectorAll('form.inline-form, form.expiry-form, #edit-form').forEach(form => {
+document.querySelectorAll('form.agent-create-form, form.expiry-form, #edit-form').forEach(form => {
   form.addEventListener('submit', e => {
     const input = form.querySelector('input[name="expires_date"]');
     if (!input) return;

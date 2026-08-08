@@ -80,6 +80,70 @@ function requireLpgSearchAccess(string $loginPath = 'login.php'): void {
     }
 }
 
+// Same pattern as hasLpgSearchAccess() - checked fresh from the DB every
+// request so a revoke from Admin > Agents takes effect immediately. Defaults
+// to NOT granted (see migrate_add_rc_print_access.sql).
+function hasRcPrintAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT rc_print_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireRcPrintAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasRcPrintAccess()) {
+        http_response_code(403);
+        die('Access denied: RC Print access has not been granted for this account.');
+    }
+}
+
+// Same pattern as hasRcPrintAccess() - checked fresh from the DB every
+// request so a revoke from Admin > Agents takes effect immediately.
+function hasHpGasAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT hp_gas_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireHpGasAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasHpGasAccess()) {
+        http_response_code(403);
+        die('Access denied: HP Gas Advanced access has not been granted for this account.');
+    }
+}
+
+// Same pattern as hasHpGasAccess() - checked fresh from the DB every
+// request so a revoke from Admin > Agents takes effect immediately.
+function hasEagleEyeAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT eagle_eye_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireEagleEyeAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasEagleEyeAccess()) {
+        http_response_code(403);
+        die('Access denied: Advance Pan India access has not been granted for this account.');
+    }
+}
+
 // Global settings row (id = 1) — created by migrate_add_whatsapp_button.sql.
 // Cached per-request; an admin's save on whatsapp_settings.php takes effect
 // on the very next request for every user, not just after their next login.

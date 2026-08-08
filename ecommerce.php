@@ -6,6 +6,10 @@ require __DIR__ . '/includes/header.php';
 ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
+<!-- Confetti overlay - populated/cleared by startConfetti()/stopConfetti()
+     (assets/confetti.js), only while a search has actually returned rows. -->
+<div class="confetti-container" id="confetti-container"></div>
+
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
   <h1 class="page-title-main" style="margin:0">E COMMERCE</h1>
   <?php if ($user['role'] === 'admin'): ?>
@@ -258,6 +262,7 @@ async function runSearch(p) {
     card.style.display='';
     dataTable.columns.adjust();
     card.scrollIntoView({behavior:'smooth',block:'start'});
+    if (data.rows.length > 0) startConfetti(); else stopConfetti();
   } catch (err) {
     alert('Search failed: could not reach the server. Please check your connection and try again.');
   } finally { btn.innerHTML='<i class="bi bi-search"></i> Search'; btn.disabled=false; }
@@ -273,6 +278,7 @@ function clearSearch() {
   document.getElementById('search-form').reset();
   document.querySelectorAll('.sp-input').forEach(el => el.value = '');
   document.getElementById('results-card').style.display = 'none';
+  stopConfetti();
 }
 
 /* E-Commerce results are excluded from copy/export (unlike the state search

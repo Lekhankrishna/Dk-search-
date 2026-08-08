@@ -54,5 +54,9 @@
   }
 })();
 </script>
+<!-- Loaded on every page so any search page can call startConfetti()/
+     stopConfetti() - see assets/confetti.js. Needs its own
+     #confetti-container div and success/clear hookup per page. -->
+<script src="<?= $bp ?>assets/confetti.js?v=<?= @filemtime(__DIR__ . '/../assets/confetti.js') ?: time() ?>"></script>
 </body>
 </html>

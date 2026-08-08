@@ -125,7 +125,7 @@ code{
 /* "lookup" wordmark (2026-08-11, replacing "CRM Portal") - approximated in
    a rounded display font since the reference logo's crescent-cutout "o"
    glyphs are custom artwork, not something any font reproduces exactly. */
-.sidebar__brand-text{font-family:'Baloo 2',var(--font);font-weight:700;font-size:19px;color:#2e9e3f;letter-spacing:0;}
+.sidebar__brand-text{font-family:'Baloo 2',var(--font);font-weight:700;font-size:28px;color:#2e9e3f;letter-spacing:0;}
 .sidebar__hamburger{
   background:none;border:none;color:var(--c-text-muted);font-size:18px;
   cursor:pointer;padding:4px;line-height:1;border-radius:6px;transition:background var(--t),color var(--t);
@@ -375,6 +375,28 @@ code{
 }
 .sp-btn-export:hover{background:#0d9668;transform:translateY(-1px);
   box-shadow:0 6px 20px rgba(16,185,129,.45);}
+
+/* ── Confetti (2026-08-08, index.php) ──────────────────────────────────────── */
+/* Fixed to the right-hand content panel only - left offset matches the
+   sidebar's 212px width (see .sidebar) so it never covers the sidebar, and
+   spans the full panel height/width rather than being boxed into the
+   results card. pointer-events:none so it never blocks clicking anything
+   underneath - purely decorative, shown only while a search has found
+   results (see startConfetti()/stopConfetti() in index.php). Left offset
+   collapses to 0 on mobile alongside the sidebar (see responsive section). */
+.confetti-container{position:fixed;top:0;left:212px;right:0;bottom:0;z-index:250;overflow:hidden;pointer-events:none;}
+.confetti-piece{
+  position:absolute;top:-24px;opacity:.85;border-radius:1px;
+  animation-name:confetti-float;animation-timing-function:linear;animation-iteration-count:infinite;
+  will-change:transform;
+}
+@keyframes confetti-float{
+  0%  {transform:translate(0,0)                 rotate(var(--rot-start));}
+  25% {transform:translate(var(--sway),27vh)     rotate(calc(var(--rot-start) + 90deg));}
+  50% {transform:translate(0,55vh)               rotate(calc(var(--rot-start) + 180deg));}
+  75% {transform:translate(calc(var(--sway) * -1),82vh) rotate(calc(var(--rot-start) + 270deg));}
+  100%{transform:translate(0,112vh)              rotate(calc(var(--rot-start) + 360deg));}
+}
 
 /* ── Results wrapper ─────────────────────────────────────────────────────────── */
 .results-wrap{
@@ -1105,6 +1127,7 @@ ul.skipped-list li{margin-bottom:3px;}
   }
   .sidebar.sidebar--open{transform:translateX(0);box-shadow:0 0 30px rgba(0,0,0,.15);}
   .app-main{margin-left:0;}
+  .confetti-container{left:0;}
   .app-topbar{padding:14px 16px 0;}
   .container{padding:16px 14px 40px;}
   .hero{padding:22px 20px;} .hero__stats{display:none;}

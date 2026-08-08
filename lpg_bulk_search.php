@@ -6,8 +6,12 @@ $basePath = '';
 require __DIR__ . '/includes/header.php';
 ?>
 
+<!-- Confetti overlay - populated/cleared by startConfetti()/stopConfetti()
+     (assets/confetti.js), only while a search has actually succeeded. -->
+<div class="confetti-container" id="confetti-container"></div>
+
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
-  <h1 class="page-title" style="margin:0"><i class="bi bi-fuel-pump-fill"></i> LPG Bulk Search</h1>
+  <h1 class="page-title" style="margin:0"><i class="bi bi-fuel-pump-fill"></i> Indian LPG Bulk Search</h1>
 </div>
 
 <style>
@@ -303,6 +307,11 @@ function poll(jobId) {
         if (data.status === "failed") {
           statusEl.textContent = `Failed: ${data.error || "unknown error"}`;
           progressWrap.style.display = "none";
+          stopConfetti();
+        } else if (data.results.some(r => !r["NOT_FOUND"])) {
+          startConfetti();
+        } else {
+          stopConfetti();
         }
       }
     } catch (pollErr) {
@@ -360,6 +369,7 @@ clearBtn.addEventListener("click", () => {
   renderResults([]);
   progressWrap.style.display = "none";
   searchBtn.disabled = false;
+  stopConfetti();
 });
 
 refreshBtn.addEventListener("click", () => location.reload());
