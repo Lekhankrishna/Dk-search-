@@ -7,7 +7,7 @@ import uuid
 
 from lpg_search import run_bulk_search
 from rc_print import run_rc_print
-from hp_gas import run_hp_gas_single
+from hp_gas import run_hp_gas_bulk
 
 app = Flask(__name__)
 
@@ -46,11 +46,23 @@ def clean_error_message(e):
 # heartbeat-based self-shutdown (this is meant to run continuously as
 # server infrastructure, not something a closed browser window should stop).
 
-# In-memory job store: job_id -> {"status": ..., "total": int, "done": int, "results": [...]}
+# In-memory job store, shared by LPG bulk search and HP Gas bulk search
+# (added 2026-08-11) - both are "numbers in, progress-tracked results out"
+# jobs with an identical status shape, so one dict/lock/runner serves both
+# rather than duplicating the whole queue/prune/semaphore-counting machinery
+# a second time. job_id -> {"status": ..., "total": int, "done": int, "results": [...]}
 jobs = {}
 jobs_lock = threading.Lock()
 
 MAX_NUMBERS = 10
+
+# HP Gas credits are far more expensive per search (150/search vs SDMS's
+# effectively free lookups) and agents' own monthly quotas default to just 5
+# (see database/migrate_add_hp_gas_monthly_limit.sql) - 10 is a flat usage
+# cap here too (same reasoning as MAX_NUMBERS above), hp_gas_api.php's own
+# per-batch quota check is what actually stops a batch a given agent can't
+# afford.
+HP_GAS_MAX_NUMBERS = 10
 
 # Raised from 25 to 500 (2026-08-19, admin-only per explicit request). Must
 # match lpg_search.py's own hardcoded `mobile_numbers[:500]` inside
@@ -108,7 +120,7 @@ _active_count = 0
 _active_count_lock = threading.Lock()
 
 
-def _run_job(job_id, numbers):
+def _run_job(job_id, numbers, search_fn):
 
     def on_progress(done, total, latest_record):
         with jobs_lock:
@@ -128,7 +140,7 @@ def _run_job(job_id, numbers):
             with jobs_lock:
                 jobs[job_id]["status"] = "processing"
             try:
-                run_bulk_search(numbers, progress_callback=on_progress)
+                search_fn(numbers, progress_callback=on_progress)
             finally:
                 with _active_count_lock:
                     _active_count -= 1
@@ -147,21 +159,7 @@ def _run_job(job_id, numbers):
             jobs[job_id]["finished_at"] = time.time()
 
 
-@app.route("/api/search", methods=["POST"])
-def start_search():
-    data = request.get_json(silent=True) or {}
-    numbers = data.get("numbers", [])
-    numbers = [str(n).strip() for n in numbers if str(n).strip()]
-
-    if not numbers:
-        return jsonify({"error": "No numbers provided"}), 400
-
-    # lpg_search_api.php sets this from the caller's actual session role (not
-    # trusted from anywhere else reachable - this endpoint only ever hears
-    # from that PHP proxy over loopback, per the module-level comment above)
-    # so admins can run batches larger than the normal agent cap.
-    numbers = numbers[:MAX_NUMBERS_ADMIN] if data.get("isAdmin") else numbers[:MAX_NUMBERS]
-
+def _start_job(numbers, search_fn):
     _prune_old_jobs()
 
     job_id = uuid.uuid4().hex
@@ -173,20 +171,26 @@ def start_search():
             "done": 0,
             "results": [],
             "finished_at": None,
+            # Flips true the first time _get_job() reports this job as
+            # "completed" - lets a caller (hp_gas_api.php) bill/log each
+            # result exactly once even if the same completed job is somehow
+            # polled again (a browser retry, a duplicate tab), without this
+            # Flask service needing to know anything about quotas or
+            # search_logs itself.
+            "delivered": False,
         }
 
-    threading.Thread(target=_run_job, args=(job_id, numbers), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job_id, numbers, search_fn), daemon=True).start()
 
-    return jsonify({"jobId": job_id, "status": "processing"})
+    return job_id
 
 
-@app.route("/api/search/<job_id>", methods=["GET"])
-def get_search(job_id):
+def _get_job(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
 
         if not job:
-            return jsonify({"error": "Job not found"}), 404
+            return None
 
         # How many other still-active jobs were submitted before this one -
         # without this, a queued job just says "waiting" with no sense of
@@ -214,14 +218,67 @@ def get_search(job_id):
                     ahead += 1
             queue_position = max(0, ahead - MAX_CONCURRENT_SEARCHES + 1)
 
-        return jsonify({
+        newly_completed = job["status"] == "completed" and not job["delivered"]
+        if newly_completed:
+            job["delivered"] = True
+
+        return {
             "status": job["status"],
             "total": job["total"],
             "done": job["done"],
             "results": job["results"],
             "error": job.get("error"),
             "queuePosition": queue_position,
-        })
+            "newlyCompleted": newly_completed,
+        }
+
+
+@app.route("/api/search", methods=["POST"])
+def start_search():
+    data = request.get_json(silent=True) or {}
+    numbers = data.get("numbers", [])
+    numbers = [str(n).strip() for n in numbers if str(n).strip()]
+
+    if not numbers:
+        return jsonify({"error": "No numbers provided"}), 400
+
+    # lpg_search_api.php sets this from the caller's actual session role (not
+    # trusted from anywhere else reachable - this endpoint only ever hears
+    # from that PHP proxy over loopback, per the module-level comment above)
+    # so admins can run batches larger than the normal agent cap.
+    numbers = numbers[:MAX_NUMBERS_ADMIN] if data.get("isAdmin") else numbers[:MAX_NUMBERS]
+
+    job_id = _start_job(numbers, run_bulk_search)
+    return jsonify({"jobId": job_id, "status": "processing"})
+
+
+@app.route("/api/search/<job_id>", methods=["GET"])
+def get_search(job_id):
+    job = _get_job(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
+
+
+@app.route("/api/hp-gas/search", methods=["POST"])
+def start_hp_gas_search():
+    data = request.get_json(silent=True) or {}
+    numbers = data.get("numbers", [])
+    numbers = [str(n).strip() for n in numbers if str(n).strip()][:HP_GAS_MAX_NUMBERS]
+
+    if not numbers:
+        return jsonify({"error": "No numbers provided"}), 400
+
+    job_id = _start_job(numbers, run_hp_gas_bulk)
+    return jsonify({"jobId": job_id, "status": "processing"})
+
+
+@app.route("/api/hp-gas/search/<job_id>", methods=["GET"])
+def get_hp_gas_search(job_id):
+    job = _get_job(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
 
 
 @app.route("/api/rc-print", methods=["POST"])
@@ -244,27 +301,6 @@ def rc_print():
         except Exception as e:
             full_trace = traceback.format_exc()
             print(f"[rc-print {vehicle_number}] FAILED:\n{full_trace}")
-            return jsonify({"error": clean_error_message(e)}), 502
-
-    return jsonify(result)
-
-
-@app.route("/api/hp-gas", methods=["POST"])
-def hp_gas():
-    data = request.get_json(silent=True) or {}
-    mobile_number = str(data.get("mobileNumber", "")).strip()
-
-    if not mobile_number:
-        return jsonify({"error": "No mobile number provided"}), 400
-
-    # Same shape as /api/rc-print - single lookup, synchronous, sharing
-    # selenium_semaphore with LPG bulk search and RC Print.
-    with selenium_semaphore:
-        try:
-            result = run_hp_gas_single(mobile_number)
-        except Exception as e:
-            full_trace = traceback.format_exc()
-            print(f"[hp-gas {mobile_number}] FAILED:\n{full_trace}")
             return jsonify({"error": clean_error_message(e)}), 502
 
     return jsonify(result)

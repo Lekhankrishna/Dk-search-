@@ -21,6 +21,19 @@ require __DIR__ . '/includes/header.php';
   .lpg-card{background:var(--c-surface,#fff);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
   .lpg-card-body{padding:16px 18px;}
   .lpg-hint{color:#999;margin:0 0 14px;font-size:13px;}
+  /* Mode toggle - which one is active swaps the input below between a
+     single-line box and the multi-number textarea (see updateMode() JS). */
+  .lpg-mode-toggle{display:flex;gap:8px;margin-bottom:12px;}
+  .lpg-mode-btn{padding:9px 18px;border-radius:999px;border:1px solid #e0e0e0;background:#fff;
+    color:#555;font-size:12.5px;font-weight:600;cursor:pointer;transition:all 150ms;}
+  .lpg-mode-btn:hover{border-color:#4f46e5;color:#4f46e5;}
+  .lpg-mode-btn.active{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 4px 14px rgba(79,70,229,.35);}
+  .lpg-input{width:100%;padding:11px 16px;font-size:13px;color:#333;
+    border:1px solid #e0e0e0;border-radius:9px;background:#fff;outline:none;}
+  .lpg-input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25);}
+  .lpg-textarea{width:100%;height:110px;padding:9px 14px;font-size:13px;color:#333;
+    border:1px solid #e0e0e0;border-radius:9px;background:#fff;resize:vertical;outline:none;}
+  .lpg-textarea:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25);}
   .lpg-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
   .lpg-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
@@ -87,8 +100,13 @@ require __DIR__ . '/includes/header.php';
 
 <div class="lpg-card">
   <div class="lpg-card-body">
-    <input type="text" id="lpgNumberBox" placeholder="9876543210"
-           style="width:100%;padding:11px 16px;font-size:13px;color:#333;border:1px solid #e0e0e0;border-radius:9px;background:#fff;outline:none;">
+    <div class="lpg-mode-toggle" role="tablist">
+      <button type="button" class="lpg-mode-btn active" data-mode="single">Single Search</button>
+      <button type="button" class="lpg-mode-btn" data-mode="bulk">Bulk Search</button>
+    </div>
+    <input type="text" id="lpgSingleBox" class="lpg-input" placeholder="9876543210">
+    <textarea id="lpgNumbersBox" class="lpg-textarea" placeholder="9876543210, 9876543211, ..." style="display:none"></textarea>
+    <p class="lpg-hint" id="lpgBulkHint" style="display:none;margin-top:10px">Runs every number in the box, up to 10 at a time.</p>
     <div class="lpg-row">
       <button id="lpgSearchBtn" class="lpg-btn">Search</button>
       <button id="lpgClearBtn" class="lpg-btn lpg-btn-secondary" type="button">Clear</button>
@@ -130,11 +148,32 @@ require __DIR__ . '/includes/header.php';
 </div>
 
 <script>
+// Flat cap for everyone, agent or admin - not a technical ceiling (the
+// backend can handle more), a deliberate usage cap.
+const BULK_NUMBER_LIMIT = 10;
 const searchBtn = document.getElementById("lpgSearchBtn");
 const clearBtn = document.getElementById("lpgClearBtn");
 const refreshBtn = document.getElementById("lpgRefreshBtn");
 const exportBtn = document.getElementById("lpgExportBtn");
-const numberBox = document.getElementById("lpgNumberBox");
+const singleBox = document.getElementById("lpgSingleBox");
+const numbersBox = document.getElementById("lpgNumbersBox");
+const bulkHint = document.getElementById("lpgBulkHint");
+const modeButtons = document.querySelectorAll(".lpg-mode-btn");
+let activeMode = "single";
+
+// Swaps the input below the toggle - single-line box for one number, the
+// textarea for many - rather than keeping both around and just changing
+// which button/label is active.
+function updateMode(mode) {
+  activeMode = mode;
+  modeButtons.forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+  const isBulk = mode === "bulk";
+  singleBox.style.display = isBulk ? "none" : "block";
+  numbersBox.style.display = isBulk ? "block" : "none";
+  bulkHint.style.display = isBulk ? "block" : "none";
+  statusEl.textContent = "";
+}
+modeButtons.forEach(btn => btn.addEventListener("click", () => updateMode(btn.dataset.mode)));
 const statusEl = document.getElementById("lpgStatus");
 const resultsWrap = document.getElementById("lpgResultsWrap");
 const resultsBody = document.getElementById("lpgResultsBody");
@@ -155,10 +194,6 @@ function formatDuration(seconds) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-// done/total-based ETA from this job's own observed rate so far - with only
-// one number here, done stays 0 until the single result lands (no partial
-// progress to average), so this shows an indeterminate bar + "Estimating
-// time…" the whole way through, then "Done in Xs" once it completes.
 function updateProgress(done, total, status) {
   if (!total || (status !== "processing" && status !== "queued" && done === 0)) {
     progressWrap.style.display = "none";
@@ -183,6 +218,35 @@ function updateProgress(done, total, status) {
     }
   }
   progressLabel.textContent = `${done} / ${total} searched`;
+}
+
+function parseNumbers(raw) {
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  // Merge "XXXXX XXXXX" formatted Indian mobile numbers (a common way
+  // they're written/copied - contact exports, business cards, SDMS itself)
+  // back into one 10-digit number, instead of splitting on that internal
+  // space (found 2026-08-05 live: "9901431238" pasted as "99014 31238"
+  // silently became two garbage 5-digit searches instead of one real one).
+  // Also strips any other punctuation (dashes, etc.) from every token, so a
+  // dash-formatted number like "9901-431238" doesn't survive as one
+  // unsearchable non-numeric string either.
+  const merged = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const cur = tokens[i].replace(/\D+/g, "");
+    const next = tokens[i + 1] ? tokens[i + 1].replace(/\D+/g, "") : "";
+    if (cur.length === 5 && next.length === 5) {
+      merged.push(cur + next);
+      i++;
+    } else if (cur.length > 0) {
+      merged.push(cur);
+    }
+  }
+
+  return merged.slice(0, BULK_NUMBER_LIMIT);
 }
 
 function cell(value, cls) {
@@ -257,8 +321,13 @@ function poll(jobId) {
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(`lpg_search_api.php?action=status&jobId=${jobId}`);
-      if (!res.ok) throw new Error(`server returned ${res.status}`);
       const data = await res.json();
+      if (res.status === 401) {
+        clearInterval(pollTimer);
+        window.location.href = data.loginUrl || "login.php";
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || `server returned ${res.status}`);
 
       statusEl.textContent = data.status === "queued"
         ? (data.queuePosition > 0
@@ -290,57 +359,64 @@ function poll(jobId) {
   }, 2000);
 }
 
-searchBtn.addEventListener("click", async () => {
-  // Strips more than surrounding whitespace - a number pasted in the
-  // common "XXXXX XXXXX" Indian formatting (or with dashes) would
-  // otherwise be sent with the punctuation still in it and silently fail
-  // to match anything (found 2026-08-05, same root cause as bulk search's
-  // parseNumbers()).
-  const number = numberBox.value.replace(/\D+/g, "");
-
-  if (!number) {
-    statusEl.textContent = "Enter a mobile number.";
-    return;
-  }
-
+async function runSearch(numbers) {
   searchBtn.disabled = true;
   statusEl.textContent = "Starting search...";
   renderResults([]);
   searchStartedAt = Date.now();
-  updateProgress(0, 1, "processing");
+  updateProgress(0, numbers.length, "processing");
 
   try {
     const res = await fetch("lpg_search_api.php?action=start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ numbers: [number] })
+      body: JSON.stringify({ numbers })
     });
 
+    const data = await res.json();
+    if (res.status === 401) {
+      window.location.href = data.loginUrl || "login.php";
+      return;
+    }
     if (!res.ok) {
-      const err = await res.json();
-      statusEl.textContent = `Error: ${err.error || "could not start search"}`;
+      statusEl.textContent = `Error: ${data.error || "could not start search"}`;
       searchBtn.disabled = false;
       progressWrap.style.display = "none";
       return;
     }
 
-    const data = await res.json();
-    statusEl.textContent = "Status: processing (0/1)";
+    statusEl.textContent = `Status: processing (0/${numbers.length})`;
     poll(data.jobId);
   } catch (err) {
     statusEl.textContent = `Could not reach the server: ${err.message}`;
     searchBtn.disabled = false;
     progressWrap.style.display = "none";
   }
+}
+
+// One button, dispatched by whichever mode the toggle above is on - single
+// mode reads the plain input (only ever one number to parse), bulk mode
+// reads the textarea and keeps up to BULK_NUMBER_LIMIT.
+searchBtn.addEventListener("click", () => {
+  const numbers = activeMode === "single"
+    ? parseNumbers(singleBox.value).slice(0, 1)
+    : parseNumbers(numbersBox.value);
+
+  if (numbers.length === 0) {
+    statusEl.textContent = activeMode === "single" ? "Enter a mobile number." : "Enter at least one mobile number.";
+    return;
+  }
+  runSearch(numbers);
 });
 
-numberBox.addEventListener("keydown", (e) => {
+singleBox.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !searchBtn.disabled) searchBtn.click();
 });
 
 clearBtn.addEventListener("click", () => {
   if (pollTimer) clearInterval(pollTimer);
-  numberBox.value = "";
+  singleBox.value = "";
+  numbersBox.value = "";
   statusEl.textContent = "";
   renderResults([]);
   progressWrap.style.display = "none";

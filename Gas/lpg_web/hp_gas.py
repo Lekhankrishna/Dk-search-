@@ -2,6 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import WebDriverException
 
 import time
 
@@ -48,13 +49,59 @@ def _extract_sections(driver):
     return [s for s in sections if s["fields"]]
 
 
-def run_hp_gas_single(mobile_number):
+def _search_one_number(driver, wait, mobile_number):
     """
-    Logs into locateme.services and runs a single HP Gas Advanced search for
-    one mobile number, returning
+    Runs one HP Gas Advanced search against an already-logged-in driver
+    session, returning
     {"mobileNumber", "found", "sections": [{"title", "fields": [{"label","value"}]}]}
-    on a hit, or {"mobileNumber", "found": False} on a miss.
+    on a hit, or {"mobileNumber", "found": False} on a miss. Unlike SDMS
+    (lpg_search.py), this page's search box doesn't go stale after a result
+    is shown - a plain re-navigate to HP_GAS_URL is all the next number in a
+    batch needs, no drilldown-recovery dance required.
     """
+    driver.get(HP_GAS_URL)
+
+    number_input = wait.until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Enter 10-digit number']"))
+    )
+    number_input.clear()
+    number_input.send_keys(mobile_number)
+    number_input.send_keys(Keys.RETURN)
+
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+
+        if "not found" in body_text.lower():
+            return {"mobileNumber": mobile_number, "found": False}
+
+        # "NODE: <consumerNumber>" only appears once a result card has
+        # actually rendered (confirmed from a real hit) - waiting for it
+        # avoids reading the field-card grid while it's still empty/mid-render.
+        if "NODE:" in body_text:
+            sections = _extract_sections(driver)
+            if sections:
+                return {"mobileNumber": mobile_number, "found": True, "sections": sections}
+            # Structure changed unexpectedly - fall back to raw text
+            # rather than silently returning nothing.
+            return {"mobileNumber": mobile_number, "found": True, "rawText": body_text}
+
+        time.sleep(1)
+
+    raise RuntimeError(f"HP Gas Advanced timed out waiting for a result for {mobile_number}")
+
+
+def run_hp_gas_bulk(mobile_numbers, progress_callback=None):
+    """
+    Logs into locateme.services once, then runs an HP Gas Advanced search for
+    each number in turn on that same session - same shape as
+    lpg_search.py's run_bulk_search(). A single search is just a 1-number
+    call to this (see app.py's /api/hp-gas/search), not a separate code path.
+
+    progress_callback(done_count, total_count, latest_record) is called
+    after each number, if provided.
+    """
+    results = []
 
     driver = None
     try:
@@ -63,37 +110,42 @@ def run_hp_gas_single(mobile_number):
 
         _login(driver, wait)
 
-        driver.get(HP_GAS_URL)
+        for index, mobile_number in enumerate(mobile_numbers):
+            try:
+                record = _search_one_number(driver, wait, mobile_number)
+            except Exception:
+                # A per-number failure (one-off timeout, page hiccup) isn't
+                # itself a reason to stop the batch - same reasoning as
+                # lpg_search.py's run_bulk_search(). "error" (rather than
+                # lpg_search.py's NOT_FOUND) marks this as a lookup that
+                # never actually completed, distinct from a genuine
+                # not-found result - hp_gas_api.php must not bill quota or
+                # log a search for either case, but the frontend/archive
+                # still need to tell them apart.
+                record = {"mobileNumber": mobile_number, "found": False, "error": True}
 
-        number_input = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Enter 10-digit number']"))
-        )
-        number_input.clear()
-        number_input.send_keys(mobile_number)
-        number_input.send_keys(Keys.RETURN)
+            results.append(record)
+            if progress_callback:
+                progress_callback(index + 1, len(mobile_numbers), record)
 
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            body_text = driver.find_element(By.TAG_NAME, "body").text
-
-            if "not found" in body_text.lower():
-                return {"mobileNumber": mobile_number, "found": False}
-
-            # "NODE: <consumerNumber>" only appears once a result card has
-            # actually rendered (confirmed from a real hit) - waiting for it
-            # avoids reading the field-card grid while it's still empty/mid-render.
-            if "NODE:" in body_text:
-                sections = _extract_sections(driver)
-                if sections:
-                    return {"mobileNumber": mobile_number, "found": True, "sections": sections}
-                # Structure changed unexpectedly - fall back to raw text
-                # rather than silently returning nothing.
-                return {"mobileNumber": mobile_number, "found": True, "rawText": body_text}
-
-            time.sleep(1)
-
-        raise RuntimeError(f"HP Gas Advanced timed out waiting for a result for {mobile_number}")
+            if record.get("error"):
+                # Same liveness check as run_bulk_search(): if the WHOLE
+                # session died (Chrome crashed, driver disconnected), every
+                # remaining number would otherwise independently discover
+                # that same fact only after its own full 30s timeout.
+                # driver.title on a dead session raises immediately instead.
+                try:
+                    _ = driver.title
+                except WebDriverException:
+                    for remaining_number in mobile_numbers[index + 1:]:
+                        remaining_record = {"mobileNumber": remaining_number, "found": False, "error": True}
+                        results.append(remaining_record)
+                        if progress_callback:
+                            progress_callback(len(results), len(mobile_numbers), remaining_record)
+                    break
 
     finally:
         if driver is not None:
             _quit_driver_with_timeout(driver)
+
+    return results

@@ -74,15 +74,12 @@ if (hasHpGasAccess()) {
 // this is purely about not showing a link the user can't use, not the
 // actual access control.
 if (hasLpgSearchAccess()) {
-    // lpg_search.php (2026-07-21) embeds the Flask bulk-search tool
-    // (Gas/lpg_web/app.py, port 9196) in an iframe instead of linking
-    // straight to it, so it opens inside the CRM's own layout/sidebar rather
-    // than as a separate tab/window pointed at a bare port number.
+    // Single vs bulk search used to be two separate pages/nav entries
+    // (lpg_search.php took one number, lpg_bulk_search.php took many) that
+    // were ~95% identical CSS/JS - merged into this one page (2026-08-11),
+    // since a textarea with one number in it behaves exactly like the old
+    // single-number form. lpg_bulk_search.php no longer exists.
     $searchRegionsExtra[] = ['label' => 'Indian LPG Search', 'href' => 'lpg_search.php'];
-    // Separate page (2026-07-24) - single-number quick search above, the
-    // original multi-number textarea tool here. Same Flask server, just a
-    // different route ("/bulk" vs "/") - see lpg_bulk_search.php.
-    $searchRegionsExtra[] = ['label' => 'Indian LPG Bulk Search', 'href' => 'lpg_bulk_search.php'];
 }
 $selectedState = $_GET['state'] ?? '';
 

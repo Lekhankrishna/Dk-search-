@@ -44,17 +44,17 @@ require __DIR__ . '/includes/header.php';
   /* Same tokens/shape as rc_print.php/hp_gas.php/advance_pan_india.php's cards. */
   .as-card{background:var(--c-surface,#fff);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
   .as-card-body{padding:20px 22px;}
-  /* State selector - pill buttons, same style as the mode tabs below.
+  /* State selector - rectangular buttons, same style as the mode tabs below.
      tracekart.in itself is 5 separate per-state pages/endpoints under the
      hood (see includes/tracekart_client.php), not one combined search, so
      this determines which of those a search actually hits rather than
      being cosmetic. */
   .as-state-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
-  /* Pill-shaped mode tabs with icons, matching the reference layout - one
+  /* Rectangular mode tabs with icons, matching the reference layout - one
      row, active = solid indigo fill, inactive = light outline. */
   .as-tabs{display:flex;gap:10px;flex-wrap:wrap;padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid #eee;}
   .as-tab[hidden]{display:none;}
-  .as-tab{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;
+  .as-tab{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:8px;
     border:1px solid #e2e2ea;background:#fff;font-size:12.5px;font-weight:600;color:#555;
     cursor:pointer;transition:all 150ms;white-space:nowrap;}
   .as-tab i{font-size:14px;}

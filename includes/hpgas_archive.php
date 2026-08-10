@@ -6,7 +6,7 @@
 // survives independently of the CRM's own database if that's ever
 // wiped/migrated). Unlike those, a single HP Gas search returns ONE
 // consumer's record grouped into named sections (see
-// Gas/lpg_web/hp_gas.py's run_hp_gas_single()) rather than a list of
+// Gas/lpg_web/hp_gas.py's run_hp_gas_bulk()) rather than a list of
 // several people, so this writes exactly one archive row per found search.
 // Field labels observed live (2026-08-10, real consumer record - Consumer
 // Details/E-KYC Profile/Distributor Intelligence/Bank & LPG Linkage/
