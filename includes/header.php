@@ -18,6 +18,15 @@ $searchRegions = [
 $searchRegionsExtra = [
     ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
 ];
+// Advanced Search is opt-in per account (Admin > Agents > "Advanced Search
+// Access") - same pattern as RC Print below. Placed right after Kerala in
+// the sidebar (i.e. first in this array, since $searchRegions - the
+// customer-lookup states - renders immediately before this one) per
+// explicit instruction, rather than grouped with the other external tools
+// further down.
+if (hasAdvancedSearchAccess()) {
+    array_unshift($searchRegionsExtra, ['label' => 'Advanced Search', 'href' => 'advanced_search.php']);
+}
 // RC Print is opt-in per account (Admin > Agents > "RC Print Access") - same
 // pattern as LPG Search below. rc_print.php fetches a vehicle's RC PDF
 // server-side via rc_print_api.php -> Gas/lpg_web's /api/rc-print (Selenium,

@@ -25,6 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $panIndiaProAccess = isset($_POST['pan_india_pro_access']) ? 1 : 0;
         $panIndiaProMonthlyLimit = min(65535, max(0, (int) ($_POST['pan_india_pro_monthly_limit'] ?? 5)));
+        $advancedSearchAccess = isset($_POST['advanced_search_access']) ? 1 : 0;
+        $advancedSearchMonthlyLimit = min(65535, max(0, (int) ($_POST['advanced_search_monthly_limit'] ?? 5)));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
@@ -35,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, max_concurrent_sessions, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :max_sessions, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :advanced_search_access, :advanced_search_monthly_limit, :max_sessions, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -55,6 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'pan_india_access' => $panIndiaAccess,
                     'pan_india_pro_access' => $panIndiaProAccess,
                     'pan_india_pro_monthly_limit' => $panIndiaProMonthlyLimit,
+                    'advanced_search_access' => $advancedSearchAccess,
+                    'advanced_search_monthly_limit' => $advancedSearchMonthlyLimit,
                     'max_sessions' => $maxSessions,
                     'expires_at'=> $expiresAtSql,
                 ]);
@@ -87,6 +91,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $panIndiaProAccess = isset($_POST['pan_india_pro_access']) ? 1 : 0;
         $panIndiaProMonthlyLimit = min(65535, max(0, (int) ($_POST['pan_india_pro_monthly_limit'] ?? 5)));
+        $advancedSearchAccess = isset($_POST['advanced_search_access']) ? 1 : 0;
+        $advancedSearchMonthlyLimit = min(65535, max(0, (int) ($_POST['advanced_search_monthly_limit'] ?? 5)));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
         $newPassword  = $_POST['new_password'] ?? '';
         $expiresDate  = trim($_POST['expires_date'] ?? '');
@@ -100,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, advanced_search_access = :advanced_search_access, advanced_search_monthly_limit = :advanced_search_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
@@ -116,6 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'pan_india_access' => $panIndiaAccess,
                 'pan_india_pro_access' => $panIndiaProAccess,
                 'pan_india_pro_monthly_limit' => $panIndiaProMonthlyLimit,
+                'advanced_search_access' => $advancedSearchAccess,
+                'advanced_search_monthly_limit' => $advancedSearchMonthlyLimit,
                 'max_sessions' => $maxSessions,
                 'expires_at'=> $expiresAtSql,
                 'id'        => $id,
@@ -140,12 +148,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $messageType = 'danger';
             }
         }
-    } elseif ($action === 'toggle') {
-        $id = (int) ($_POST['id'] ?? 0);
-        if ($id !== (int) $_SESSION['user_id']) {
-            $stmt = $pdo->prepare('UPDATE users SET is_active = 1 - is_active WHERE id = :id');
-            $stmt->execute(['id' => $id]);
-        }
     } elseif ($action === 'toggle_lpg') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET lpg_search_access = 1 - lpg_search_access WHERE id = :id');
@@ -169,6 +171,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle_pan_india_pro') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET pan_india_pro_access = 1 - pan_india_pro_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_advanced_search') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET advanced_search_access = 1 - advanced_search_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
     } elseif ($action === 'regenerate_lpg_key') {
         // Invalidates that agent's current bookmarklet immediately — the next
@@ -206,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
 )->fetchAll();
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
@@ -271,28 +277,26 @@ require __DIR__ . '/../includes/header.php';
      almost no room once Feature Access grew to 5 checkboxes + 3
      monthly-limit inputs; scoped to just this modal via its own ID rather
      than raising the shared default, which other (genuinely small) modals
-     elsewhere still want. Wide enough that basic info fits one row of 4,
-     Feature Access one row of 5, and Max Logins/Expiry one row of 3 - the
-     goal being everything visible without scrolling on a normal desktop
-     window, not just "a bit more room". */
+     elsewhere still want. Wide enough that basic info fits one row of 4
+     and Max Logins/Expiry one row of 3 on a normal desktop window.
+     Feature Access itself auto-wraps (minmax(190px,1fr)) rather than a
+     fixed column count - a fixed repeat(N,1fr) has to be re-tuned by hand
+     every time a feature is added and, worse, doesn't wrap at all on a
+     narrower/non-maximized window - it just runs the last item(s) off the
+     edge instead (found 2026-08-10 with 7 features + number inputs). */
   #edit-modal-overlay .modal-box{max-width:960px;width:96vw;}
   #edit-modal-overlay .edit-basic-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0 16px;}
   #edit-modal-overlay .edit-basic-grid .form-group{margin-bottom:14px;}
-  #edit-modal-overlay .acf-feature-grid{grid-template-columns:repeat(6,1fr);}
+  #edit-modal-overlay .acf-feature-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));}
   #edit-modal-overlay .edit-settings-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0 16px;align-items:end;}
   #edit-modal-overlay .edit-settings-grid .form-group{margin-bottom:14px;}
-  @media (max-width:900px){
-    #edit-modal-overlay .acf-feature-grid{grid-template-columns:repeat(3,1fr);}
-  }
   @media (max-width:700px){
     #edit-modal-overlay .edit-basic-grid{grid-template-columns:1fr 1fr;}
     #edit-modal-overlay .edit-settings-grid{grid-template-columns:1fr 1fr;}
-    #edit-modal-overlay .acf-feature-grid{grid-template-columns:1fr 1fr;}
   }
   @media (max-width:560px){
     #edit-modal-overlay .edit-basic-grid{grid-template-columns:1fr;}
     #edit-modal-overlay .edit-settings-grid{grid-template-columns:1fr;}
-    #edit-modal-overlay .acf-feature-grid{grid-template-columns:1fr;}
   }
 </style>
 
@@ -394,6 +398,13 @@ require __DIR__ . '/../includes/header.php';
           <input type="number" name="pan_india_pro_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
         </span>
       </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="advanced_search_access" value="1">
+        <span>Advanced Search</span>
+        <span class="acf-limit" title="How many Advanced Search searches this agent can run per calendar month - shares a single account's own daily/IP quota on tracekart.in. Ignored for admins.">
+          <input type="number" name="advanced_search_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
     </div>
 
     <div class="acf-row">
@@ -448,6 +459,7 @@ require __DIR__ . '/../includes/header.php';
           <th>HP Gas</th>
           <th>Adv. Pan India</th>
           <th>Night Out</th>
+          <th>Advanced Search</th>
           <th>Set Expiry</th>
           <th>Actions</th>
         </tr>
@@ -517,6 +529,14 @@ require __DIR__ . '/../includes/header.php';
             <?php endif; ?>
           </td>
           <td>
+            <span class="badge <?= $u['advanced_search_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['advanced_search_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['advanced_search_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['advanced_search_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
             <form method="post" class="expiry-form">
               <input type="hidden" name="action" value="set_expiry">
               <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
@@ -538,7 +558,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['advanced_search_access'] ?>, <?= (int) $u['advanced_search_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -552,14 +572,6 @@ require __DIR__ . '/../includes/header.php';
               </form>
             <?php endif; ?>
             <?php if (!$isSelf): ?>
-              <form method="post" style="display:inline">
-                <input type="hidden" name="action" value="toggle">
-                <input type="hidden" name="id"     value="<?= (int) $u['id'] ?>">
-                <button type="submit" class="btn btn-sm <?= $u['is_active'] ? 'btn-secondary' : 'btn-success' ?>"
-                        title="<?= $u['is_active'] ? 'Pause this account - blocks login until resumed' : 'Resume this account' ?>">
-                  <i class="bi bi-<?= $u['is_active'] ? 'pause-circle' : 'play-circle' ?>"></i> <?= $u['is_active'] ? 'Pause' : 'Resume' ?>
-                </button>
-              </form>
               <form method="post" style="display:inline"
                     onsubmit="return confirm('Delete account \'<?= htmlspecialchars($u['username'], ENT_QUOTES) ?>\'?\nSearch history will also be deleted. This cannot be undone.')">
                 <input type="hidden" name="action" value="delete">
@@ -649,6 +661,13 @@ require __DIR__ . '/../includes/header.php';
               <input type="number" name="pan_india_pro_monthly_limit" id="edit-pan_india_pro_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
             </span>
           </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="advanced_search_access" id="edit-advanced_search_access" value="1">
+            <span>Advanced Search</span>
+            <span class="acf-limit" title="How many Advanced Search searches this agent can run per calendar month - shares a single account's own daily/IP quota on tracekart.in. Ignored for admins.">
+              <input type="number" name="advanced_search_monthly_limit" id="edit-advanced_search_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
         </div>
       </div>
       <div class="edit-settings-grid">
@@ -690,7 +709,7 @@ require __DIR__ . '/../includes/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, maxSessions, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, advancedSearchAccess, advancedSearchMonthlyLimit, maxSessions, expiresDate, expiresTime) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
@@ -706,6 +725,8 @@ function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrin
   document.getElementById('edit-pan_india_access').checked = !!panIndiaAccess;
   document.getElementById('edit-pan_india_pro_access').checked = !!panIndiaProAccess;
   document.getElementById('edit-pan_india_pro_monthly_limit').value = panIndiaProMonthlyLimit;
+  document.getElementById('edit-advanced_search_access').checked = !!advancedSearchAccess;
+  document.getElementById('edit-advanced_search_monthly_limit').value = advancedSearchMonthlyLimit;
   document.getElementById('edit-max_concurrent_sessions').value = maxSessions;
   document.getElementById('edit-expires_date').value = expiresDate;
   document.getElementById('edit-expires_time').value = expiresTime;
@@ -826,6 +847,7 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
         'hp_gas' => $u['hp_gas_access'] ? "Granted ({$u['hp_gas_monthly_limit']}/mo)" : 'Not Granted',
         'adv_pan_india' => $u['eagle_eye_access'] ? "Granted ({$u['eagle_eye_monthly_limit']}/mo)" : 'Not Granted',
         'pan_india_pro' => $u['pan_india_pro_access'] ? "Granted ({$u['pan_india_pro_monthly_limit']}/mo)" : 'Not Granted',
+        'advanced_search' => $u['advanced_search_access'] ? "Granted ({$u['advanced_search_monthly_limit']}/mo)" : 'Not Granted',
         'max_logins' => $u['max_concurrent_sessions'],
         'expires_at' => $u['expires_at'] ? date('d/m/Y H:i', strtotime($u['expires_at'])) : 'No expiry',
         'created_at' => $u['created_at'] ? date('d/m/Y H:i', strtotime($u['created_at'])) : '',
@@ -834,10 +856,10 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
 }, $users), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
 document.getElementById('export-accounts-btn').addEventListener('click', () => {
-  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Status', 'LPG', 'Pan India', 'RC Print', 'HP Gas', 'Adv. Pan India', 'Night Out', 'Max Logins', 'Expiry', 'Created At', 'Last Login'];
+  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Status', 'LPG', 'Pan India', 'RC Print', 'HP Gas', 'Adv. Pan India', 'Night Out', 'Advanced Search', 'Max Logins', 'Expiry', 'Created At', 'Last Login'];
   const aoa = [headers, ...AGENTS_EXPORT_DATA.map(u => [
     u.id, u.username, u.full_name, u.mobile_no, u.role, u.status, u.lpg, u.pan_india,
-    u.rc_print, u.hp_gas, u.adv_pan_india, u.pan_india_pro, u.max_logins, u.expires_at, u.created_at, u.last_login_at,
+    u.rc_print, u.hp_gas, u.adv_pan_india, u.pan_india_pro, u.advanced_search, u.max_logins, u.expires_at, u.created_at, u.last_login_at,
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
