@@ -10,6 +10,7 @@
 require __DIR__ . '/includes/auth.php';
 requireRcPrintAccess();
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/rcprint_archive.php';
 
 header('Content-Type: application/json');
 
@@ -109,6 +110,8 @@ if ($httpCode === 200 && is_array($decoded) && !empty($decoded['pdfDataUri'])) {
             $response = json_encode($decoded);
         }
     } catch (PDOException $e) {}
+
+    archiveRcPrintResult($decoded['pdfDataUri'], $vehicleNumber, currentUser()['username'] ?? 'unknown');
 }
 
 http_response_code($httpCode ?: 200);

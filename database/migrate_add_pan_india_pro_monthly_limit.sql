@@ -1,0 +1,2 @@
+ALTER TABLE users
+  ADD COLUMN pan_india_pro_monthly_limit SMALLINT UNSIGNED NOT NULL DEFAULT 5;

@@ -8,7 +8,7 @@
    already in progress rather than one single burst.
 
    Shared across every search page (index.php, ecommerce.php, rc_print.php,
-   hp_gas.php, eagle_eye.php, lpg_search.php, lpg_bulk_search.php) - each
+   hp_gas.php, advance_pan_india.php, lpg_search.php, lpg_bulk_search.php) - each
    page just needs its own <div class="confetti-container" id="confetti-
    container"></div> and to call startConfetti()/stopConfetti() from its own
    search success/clear handlers. */

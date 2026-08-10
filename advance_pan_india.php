@@ -80,9 +80,9 @@ require __DIR__ . '/includes/header.php';
 <div class="ee-card">
   <div class="ee-card-body">
     <div class="ee-grid">
+      <div class="ee-field"><label>Mobile</label><input type="text" id="eeMobile" placeholder="Enter mobile number"></div>
       <div class="ee-field"><label>Name</label><input type="text" id="eeName" placeholder="Enter name"></div>
       <div class="ee-field"><label>Father's Name</label><input type="text" id="eeFname" placeholder="Enter father's name"></div>
-      <div class="ee-field"><label>Mobile</label><input type="text" id="eeMobile" placeholder="Enter mobile number"></div>
       <div class="ee-field"><label>Email</label><input type="email" id="eeEmail" placeholder="Enter email"></div>
       <div class="ee-field"><label>Address</label><input type="text" id="eeAddress" placeholder="Enter address"></div>
       <div class="ee-field"><label>Identity</label><input type="text" id="eeMasterId" placeholder="Enter identity"></div>
@@ -252,7 +252,7 @@ async function runSearch() {
   startProgress();
 
   try {
-    const res = await fetch("eagle_eye_api.php", {
+    const res = await fetch("advance_pan_india_api.php", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params)

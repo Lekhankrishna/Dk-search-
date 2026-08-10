@@ -43,13 +43,21 @@ if (hasPanIndiaAccess()) {
 // includes/eagleeye_client.php (plain PHP+curl, no browser automation
 // needed - see that file's own comment on why).
 if (hasEagleEyeAccess()) {
-    $searchRegionsExtra[] = ['label' => 'Advance Pan India', 'href' => 'eagle_eye.php'];
+    $searchRegionsExtra[] = ['label' => 'Advance Pan India', 'href' => 'advance_pan_india.php'];
 }
-// HP Gas Advanced is opt-in per account (Admin > Agents > "HP Gas Access") -
+// Night Out is opt-in per account (Admin > Agents > "Night Out
+// Access") - backed by a third-party JSON search API via
+// includes/pan_india_pro_client.php (plain PHP+curl, no browser automation
+// needed - see that file's own comment on why). Positioned right below
+// Advance Pan India per explicit instruction.
+if (hasPanIndiaProAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Night Out', 'href' => 'pan_india_pro.php'];
+}
+// HP LPG Search is opt-in per account (Admin > Agents > "HP Gas Access") -
 // same pattern as RC Print above (own hp_gas.py automation against the same
 // locateme.services login, proxied through hp_gas_api.php).
 if (hasHpGasAccess()) {
-    $searchRegionsExtra[] = ['label' => 'HP Gas Advanced', 'href' => 'hp_gas.php'];
+    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
 }
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
 // only add the menu item at all when the current user has been granted it.

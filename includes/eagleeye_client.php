@@ -12,7 +12,7 @@
 // that ever needs them, there's no per-agent bookmarklet use case.
 const EAGLEEYE_BASE = 'https://theeagleeye.biz';
 const EAGLEEYE_USERNAME = 'dhanushkodia@gmail.com';
-const EAGLEEYE_PASSWORD = 'july@2026@13';
+const EAGLEEYE_PASSWORD = 'Ashwanth@789@5@77';
 
 function eagleEyeCookieJarPath(): string {
     return sys_get_temp_dir() . '/eagleeye_cookies.txt';

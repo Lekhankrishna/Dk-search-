@@ -7,6 +7,7 @@
 require __DIR__ . '/includes/auth.php';
 requireHpGasAccess();
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/includes/hpgas_archive.php';
 
 header('Content-Type: application/json');
 
@@ -105,6 +106,10 @@ if ($httpCode === 200 && is_array($decoded) && array_key_exists('found', $decode
             $response = json_encode($decoded);
         }
     } catch (PDOException $e) {}
+
+    if (!empty($decoded['found']) && !empty($decoded['sections'])) {
+        archiveHpGasResults($decoded['sections'], currentUser()['username'] ?? 'unknown', $mobileNumber);
+    }
 }
 
 http_response_code($httpCode ?: 200);

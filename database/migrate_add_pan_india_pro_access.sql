@@ -1,0 +1,2 @@
+ALTER TABLE users
+  ADD COLUMN pan_india_pro_access TINYINT(1) NOT NULL DEFAULT 0;

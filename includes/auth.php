@@ -119,7 +119,7 @@ function requireHpGasAccess(string $loginPath = 'login.php'): void {
     requireLogin($loginPath);
     if (!hasHpGasAccess()) {
         http_response_code(403);
-        die('Access denied: HP Gas Advanced access has not been granted for this account.');
+        die('Access denied: HP LPG Search access has not been granted for this account.');
     }
 }
 
@@ -165,6 +165,28 @@ function requirePanIndiaAccess(string $loginPath = 'login.php'): void {
     if (!hasPanIndiaAccess()) {
         http_response_code(403);
         die('Access denied: Pan India Search access has not been granted for this account.');
+    }
+}
+
+// Same pattern as hasPanIndiaAccess() - checked fresh from the DB every
+// request so a revoke from Admin > Agents takes effect immediately. Defaults
+// to NOT granted (see migrate_add_pan_india_pro_access.sql).
+function hasPanIndiaProAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT pan_india_pro_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requirePanIndiaProAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasPanIndiaProAccess()) {
+        http_response_code(403);
+        die('Access denied: Night Out access has not been granted for this account.');
     }
 }
 
