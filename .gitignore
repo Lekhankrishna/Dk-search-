@@ -55,5 +55,10 @@ __pycache__/
 /Gas/lpg_web/service.log
 /Gas/lpg_web/service_error.log
 
+# Admin > Agents create/edit PDOException details (admin/agents.php) - the
+# php.ini-configured error_log path isn't readable outside the web server's
+# own account, so this is logged here instead for debugging. Not source.
+/agents_debug.log
+
 # Stray editor/manual backup copies of tracked files.
 *.bak-*

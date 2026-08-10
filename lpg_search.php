@@ -6,8 +6,12 @@ $basePath = '';
 require __DIR__ . '/includes/header.php';
 ?>
 
+<!-- Confetti overlay - populated/cleared by startConfetti()/stopConfetti()
+     (assets/confetti.js), only while a search has actually succeeded. -->
+<div class="confetti-container" id="confetti-container"></div>
+
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
-  <h1 class="page-title" style="margin:0"><i class="bi bi-fuel-pump-fill"></i> LPG Search</h1>
+  <h1 class="page-title" style="margin:0"><i class="bi bi-fuel-pump-fill"></i> Indian LPG Search</h1>
 </div>
 
 <style>
@@ -26,6 +30,8 @@ require __DIR__ . '/includes/header.php';
   .lpg-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
   .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
   .lpg-btn-sm{padding:7px 16px;font-size:11px;}
+  .lpg-btn-export{background:#065f46;color:#fff;border:none;box-shadow:0 4px 18px rgba(6,95,70,.35);}
+  .lpg-btn-export:hover:not(:disabled){background:#054a37;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,95,70,.5);}
   #lpgStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .lpg-progress-wrap{margin-top:12px;display:none;}
   .lpg-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
@@ -46,6 +52,28 @@ require __DIR__ . '/includes/header.php';
   .lpg-table tbody tr:nth-child(even){background:#eeeef6;}
   .lpg-table tbody tr:hover{background:rgba(79,70,229,.06);box-shadow:inset 3px 0 0 #4f46e5;}
   .lpg-table tbody tr:last-child td{border-bottom:none;}
+  /* Colour-coded columns (2026-08-03), same palette as pan_india.php/index.php -
+     column 1 ("#") stays plain, columns 2-10 each get their own header colour
+     plus a light tint on the cell (this page is a fixed light theme, not the
+     shared dark/light CSS variables, so plain hex/rgba is used directly). */
+  .lpg-table th:nth-child(2){background:rgb(219,39,119);}
+  .lpg-table th:nth-child(3){background:rgb(124,58,237);}
+  .lpg-table th:nth-child(4){background:rgb(234,88,12);}
+  .lpg-table th:nth-child(5){background:rgb(5,150,105);}
+  .lpg-table th:nth-child(6){background:rgb(13,148,136);}
+  .lpg-table th:nth-child(7){background:rgb(37,99,235);}
+  .lpg-table th:nth-child(8){background:rgb(217,119,6);}
+  .lpg-table th:nth-child(9){background:rgb(225,29,72);}
+  .lpg-table th:nth-child(10){background:rgb(2,132,199);}
+  .lpg-table td:nth-child(2){background:rgba(219,39,119,.08);border-left:3px solid rgba(219,39,119,.5);}
+  .lpg-table td:nth-child(3){background:rgba(124,58,237,.08);border-left:3px solid rgba(124,58,237,.5);}
+  .lpg-table td:nth-child(4){background:rgba(234,88,12,.08);border-left:3px solid rgba(234,88,12,.5);}
+  .lpg-table td:nth-child(5){background:rgba(5,150,105,.08);border-left:3px solid rgba(5,150,105,.5);}
+  .lpg-table td:nth-child(6){background:rgba(13,148,136,.08);border-left:3px solid rgba(13,148,136,.5);}
+  .lpg-table td:nth-child(7){background:rgba(37,99,235,.08);border-left:3px solid rgba(37,99,235,.5);}
+  .lpg-table td:nth-child(8){background:rgba(217,119,6,.08);border-left:3px solid rgba(217,119,6,.5);}
+  .lpg-table td:nth-child(9){background:rgba(225,29,72,.08);border-left:3px solid rgba(225,29,72,.5);}
+  .lpg-table td:nth-child(10){background:rgba(2,132,199,.08);border-left:3px solid rgba(2,132,199,.5);}
   .lpg-cell-name{font-weight:700;color:#333;}
   .lpg-cell-mobile{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:12px;
     background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);padding:1px 7px;border-radius:5px;
@@ -59,7 +87,6 @@ require __DIR__ . '/includes/header.php';
 
 <div class="lpg-card">
   <div class="lpg-card-body">
-    <p class="lpg-hint">Enter a mobile number to look it up against your SDMS account.</p>
     <input type="text" id="lpgNumberBox" placeholder="9876543210"
            style="width:100%;padding:11px 16px;font-size:13px;color:#333;border:1px solid #e0e0e0;border-radius:9px;background:#fff;outline:none;">
     <div class="lpg-row">
@@ -81,7 +108,7 @@ require __DIR__ . '/includes/header.php';
 <div class="lpg-results-wrap" id="lpgResultsWrap" style="display:none;">
   <div class="lpg-results-toolbar">
     <span class="count" id="lpgResultsCount"></span>
-    <button id="lpgExportBtn" class="lpg-btn lpg-btn-secondary lpg-btn-sm" type="button">⬇ Export to Excel</button>
+    <button id="lpgExportBtn" class="lpg-btn lpg-btn-export lpg-btn-sm" type="button">⬇ Export to Excel</button>
   </div>
   <table class="lpg-table" id="lpgResultsTable">
     <thead>
@@ -230,13 +257,8 @@ function poll(jobId) {
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(`lpg_search_api.php?action=status&jobId=${jobId}`);
+      if (!res.ok) throw new Error(`server returned ${res.status}`);
       const data = await res.json();
-      if (res.status === 401) {
-        clearInterval(pollTimer);
-        window.location.href = data.loginUrl || "login.php";
-        return;
-      }
-      if (!res.ok) throw new Error(data.error || `server returned ${res.status}`);
 
       statusEl.textContent = data.status === "queued"
         ? (data.queuePosition > 0
@@ -252,6 +274,11 @@ function poll(jobId) {
         if (data.status === "failed") {
           statusEl.textContent = `Failed: ${data.error || "unknown error"}`;
           progressWrap.style.display = "none";
+          stopConfetti();
+        } else if (data.results.some(r => !r["NOT_FOUND"])) {
+          startConfetti();
+        } else {
+          stopConfetti();
         }
       }
     } catch (pollErr) {
@@ -264,7 +291,12 @@ function poll(jobId) {
 }
 
 searchBtn.addEventListener("click", async () => {
-  const number = numberBox.value.trim();
+  // Strips more than surrounding whitespace - a number pasted in the
+  // common "XXXXX XXXXX" Indian formatting (or with dashes) would
+  // otherwise be sent with the punctuation still in it and silently fail
+  // to match anything (found 2026-08-05, same root cause as bulk search's
+  // parseNumbers()).
+  const number = numberBox.value.replace(/\D+/g, "");
 
   if (!number) {
     statusEl.textContent = "Enter a mobile number.";
@@ -284,18 +316,15 @@ searchBtn.addEventListener("click", async () => {
       body: JSON.stringify({ numbers: [number] })
     });
 
-    const data = await res.json();
-    if (res.status === 401) {
-      window.location.href = data.loginUrl || "login.php";
-      return;
-    }
     if (!res.ok) {
-      statusEl.textContent = `Error: ${data.error || "could not start search"}`;
+      const err = await res.json();
+      statusEl.textContent = `Error: ${err.error || "could not start search"}`;
       searchBtn.disabled = false;
       progressWrap.style.display = "none";
       return;
     }
 
+    const data = await res.json();
     statusEl.textContent = "Status: processing (0/1)";
     poll(data.jobId);
   } catch (err) {
@@ -316,6 +345,7 @@ clearBtn.addEventListener("click", () => {
   renderResults([]);
   progressWrap.style.display = "none";
   searchBtn.disabled = false;
+  stopConfetti();
 });
 
 refreshBtn.addEventListener("click", () => location.reload());

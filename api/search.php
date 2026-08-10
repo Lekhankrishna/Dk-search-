@@ -4,14 +4,14 @@ header('Content-Type: application/json');
 
 if (!isLoggedIn()) {
     http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'Not authenticated']);
+    echo json_encode(['ok' => false, 'error' => 'Your session has expired. Please sign in again.', 'loginUrl' => 'login.php']);
     exit;
 }
 if (!isSessionValid()) {
     session_unset();
     session_destroy();
     http_response_code(401);
-    echo json_encode(['ok' => false, 'error' => 'Your account was signed in from another device. Please log in again.']);
+    echo json_encode(['ok' => false, 'error' => 'Your account was signed in from another device. Please log in again.', 'loginUrl' => 'login.php?reason=session_replaced']);
     exit;
 }
 session_write_close(); // release session lock so other requests don't block
@@ -20,6 +20,10 @@ require_once __DIR__ . '/../config/db.php';
 
 // Set a per-query timeout so a slow scan never hangs the page
 try { $pdo->exec("SET SESSION MAX_EXECUTION_TIME=60000"); } catch (PDOException $e) {}
+
+// Wall-clock time for the actual search work below (excludes auth checks
+// above) - surfaced to the UI as a "Xms" badge next to the result count.
+$queryStartedAt = microtime(true);
 
 // Generic structural address words, plus major city/place names for the
 // states we serve — both match a huge fraction of rows within their state
@@ -206,8 +210,19 @@ foreach ($searchTables as $entry) {
     }
 }
 
-$cols = 'id, customer_code, name, mobile_no, dob, gender, father_name,
-         address, permanent_address, email, alternative_no, identity_no';
+// address/permanent_address are wrapped in REPLACE() for DISPLAY only - the
+// Karnataka bdata import (cli/import_karnataka_bdata.php) copied its source
+// postal-address column through verbatim, and that upstream data already
+// had its parts flattened together with "!" as an internal separator
+// (found 2026-08-03). Two chained REPLACE()s so "word! word" (space already
+// present) doesn't end up double-spaced after becoming ", " - only a bare
+// "!" with no following space gets one inserted. WHERE/MATCH clauses below
+// still search the raw, unmodified column - only the returned column here
+// is affected, so this can't change which rows a search finds.
+$cols = "id, customer_code, name, mobile_no, dob, gender, father_name,
+         REPLACE(REPLACE(address, '! ', ', '), '!', ', ') AS address,
+         REPLACE(REPLACE(permanent_address, '! ', ', '), '!', ', ') AS permanent_address,
+         email, alternative_no, identity_no";
 
 // Requested page size from the "Show entries" dropdown — only an allow-listed
 // value is accepted (never pass the raw GET value into a LIMIT clause).
@@ -694,7 +709,11 @@ foreach ($searchTables as $entry) {
             $rows = array_values(array_filter($rows, fn($r) => nameStartsWith((string) ($r['name'] ?? ''), $nameFilterPrefix)));
         }
         if ($pincodeFilterPrefix !== null) {
-            $rows = array_values(array_filter($rows, fn($r) => str_starts_with((string) ($r['pincode'] ?? ''), $pincodeFilterPrefix)));
+            // strncmp(), not str_starts_with() - the latter is PHP 8.0+ only,
+            // and this file needs to run on PHP 7.4 (found 2026-08-06: the
+            // production IIS site serves PHP 7.4, not the PHP 8.3 this app
+            // is normally tested against locally).
+            $rows = array_values(array_filter($rows, fn($r) => strncmp((string) ($r['pincode'] ?? ''), $pincodeFilterPrefix, strlen($pincodeFilterPrefix)) === 0));
         }
 
         // Swap-retry: if the primary term's window still didn't contain a real match
@@ -721,7 +740,7 @@ foreach ($searchTables as $entry) {
                     $rows = array_values(array_filter($rows, fn($r) => nameStartsWith((string) ($r['name'] ?? ''), $nameFilterPrefix)));
                 }
                 if ($pincodeFilterPrefix !== null) {
-                    $rows = array_values(array_filter($rows, fn($r) => str_starts_with((string) ($r['pincode'] ?? ''), $pincodeFilterPrefix)));
+                    $rows = array_values(array_filter($rows, fn($r) => strncmp((string) ($r['pincode'] ?? ''), $pincodeFilterPrefix, strlen($pincodeFilterPrefix)) === 0));
                 }
             } catch (PDOException $e) {
                 // leave $rows as the (empty) primary-attempt result
@@ -817,6 +836,10 @@ foreach ($searchTables as $entry) {
 
 $allRows = array_slice($allRows, 0, $limit);
 
+// Captured here, before the audit-log write below - that INSERT is
+// unrelated overhead the badge shouldn't be blamed for.
+$queryMs = (int) round((microtime(true) - $queryStartedAt) * 1000);
+
 /* ── Log ─────────────────────────────────────────────────────────────────── */
 try {
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
@@ -826,4 +849,4 @@ try {
                    'cnt' => count($allRows), 'ip' => substr($ip, 0, 45)]);
 } catch (PDOException $e) {}
 
-echo json_encode(['ok' => true, 'rows' => $allRows]);
+echo json_encode(['ok' => true, 'rows' => $allRows, 'queryMs' => $queryMs]);

@@ -17,11 +17,48 @@ $searchRegions = [
 // same-page state switching (a real navigation here, not a state swap).
 $searchRegionsExtra = [
     ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
-    // Open to every logged-in user (pan_india.php only calls requireLogin(),
-    // no per-user grant like LPG Search) — so unlike the block below, this
-    // is unconditional.
-    ['label' => 'Pan India', 'href' => 'pan_india.php'],
 ];
+// RC Print is opt-in per account (Admin > Agents > "RC Print Access") - same
+// pattern as LPG Search below. rc_print.php fetches a vehicle's RC PDF
+// server-side via rc_print_api.php -> Gas/lpg_web's /api/rc-print (Selenium,
+// same shape as the LPG bulk search automation) and renders it in the CRM's
+// own interface, rather than linking out to locateme.services directly. The
+// locateme.services login itself is hardcoded in Gas/lpg_web/rc_print.py,
+// same as lpg_search.py's SDMS USERNAME/PASSWORD - not in this app's DB.
+if (hasRcPrintAccess()) {
+    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
+}
+// Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
+// same as LPG Search below (2026-08-19 - previously unconditional for every
+// logged-in user; migrate_add_pan_india_access.sql defaults existing
+// accounts to still-granted, so this doesn't change anyone's access on its
+// own, it just makes it revocable). pan_india.php/api/pan_india.php enforce
+// the same check server-side, so this is purely about not showing a link
+// the user can't use, not the actual access control.
+if (hasPanIndiaAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Pan India', 'href' => 'pan_india.php'];
+}
+// Advance Pan India is opt-in per account (Admin > Agents > "Advance Pan
+// India Access") - backed by theeagleeye.biz's Advanced Search tool via
+// includes/eagleeye_client.php (plain PHP+curl, no browser automation
+// needed - see that file's own comment on why).
+if (hasEagleEyeAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Advance Pan India', 'href' => 'advance_pan_india.php'];
+}
+// Night Out is opt-in per account (Admin > Agents > "Night Out
+// Access") - backed by a third-party JSON search API via
+// includes/pan_india_pro_client.php (plain PHP+curl, no browser automation
+// needed - see that file's own comment on why). Positioned right below
+// Advance Pan India per explicit instruction.
+if (hasPanIndiaProAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Night Out', 'href' => 'pan_india_pro.php'];
+}
+// HP LPG Search is opt-in per account (Admin > Agents > "HP Gas Access") -
+// same pattern as RC Print above (own hp_gas.py automation against the same
+// locateme.services login, proxied through hp_gas_api.php).
+if (hasHpGasAccess()) {
+    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
+}
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
 // only add the menu item at all when the current user has been granted it.
 // lpg_search.php enforces the same check server-side (403) regardless, so
@@ -32,13 +69,30 @@ if (hasLpgSearchAccess()) {
     // (Gas/lpg_web/app.py, port 9196) in an iframe instead of linking
     // straight to it, so it opens inside the CRM's own layout/sidebar rather
     // than as a separate tab/window pointed at a bare port number.
-    $searchRegionsExtra[] = ['label' => 'LPG Search', 'href' => 'lpg_search.php'];
+    $searchRegionsExtra[] = ['label' => 'Indian LPG Search', 'href' => 'lpg_search.php'];
     // Separate page (2026-07-24) - single-number quick search above, the
     // original multi-number textarea tool here. Same Flask server, just a
     // different route ("/bulk" vs "/") - see lpg_bulk_search.php.
-    $searchRegionsExtra[] = ['label' => 'LPG Bulk Search', 'href' => 'lpg_bulk_search.php'];
+    $searchRegionsExtra[] = ['label' => 'Indian LPG Bulk Search', 'href' => 'lpg_bulk_search.php'];
 }
 $selectedState = $_GET['state'] ?? '';
+
+// Sidebar colour-coding (2026-08-03) - same 12-hue palette as the results
+// tables (pan_india.php, index.php), cycled by nav position so every item
+// gets a distinct colour instead of one flat accent purple. Inline style
+// rather than CSS nth-child - some items (LPG Search/Bulk Search, the
+// whole Account section) only render conditionally, so a fixed position
+// count in CSS would be fragile; incrementing an index in PHP as each
+// item is actually printed is not.
+const SIDEBAR_NAV_COLORS = [
+    [219, 39, 119], [124, 58, 237], [234, 88, 12], [5, 150, 105], [13, 148, 136],
+    [37, 99, 235], [79, 70, 229], [217, 119, 6], [225, 29, 72], [2, 132, 199],
+    [101, 163, 13], [192, 38, 211],
+];
+function sidebarNavColor(int $i): string {
+    [$r, $g, $b] = SIDEBAR_NAV_COLORS[$i % count(SIDEBAR_NAV_COLORS)];
+    return "$r,$g,$b";
+}
 
 $expiresAt    = $user['expires_at'] ?? null;
 $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
@@ -49,7 +103,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <meta charset="UTF-8">
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM Portal — Data Search</title>
+  <title>lookup — Data Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -62,8 +116,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__top">
       <a class="sidebar__brand" href="<?= $bp ?>index.php">
-        <div class="sidebar__brand-icon"><i class="bi bi-diagram-3-fill"></i></div>
-        CRM Portal
+        <span class="sidebar__brand-text">lookup</span>
       </a>
       <button class="sidebar__hamburger" id="sidebar-toggle" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>
@@ -72,19 +125,27 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 
     <div class="sidebar__section-label">Search Regions</div>
     <nav class="sidebar__group">
-      <?php foreach ($searchRegions as $region): ?>
+      <?php
+      $navColorIndex = 0;
+      foreach ($searchRegions as $region):
+        $isActive = $currentPage === 'index.php' && $selectedState === $region['state'];
+        $thisColorIndex = $navColorIndex++;
+      ?>
         <a href="<?= $bp ?>index.php<?= $region['state'] !== '' ? '?state=' . urlencode($region['state']) : '' ?>"
-           class="sidebar__item sidebar-state-item<?= ($currentPage === 'index.php' && $selectedState === $region['state']) ? ' active' : '' ?>"
+           class="sidebar__item sidebar-state-item<?= $isActive ? ' active' : '' ?>"
            data-state="<?= htmlspecialchars($region['state']) ?>">
-          <span class="sidebar__avatar"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
+          <span class="sidebar__avatar" style="background:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
           <?= htmlspecialchars($region['label']) ?>
         </a>
       <?php endforeach; ?>
-      <?php foreach ($searchRegionsExtra as $region): ?>
+      <?php foreach ($searchRegionsExtra as $region):
+        $isActive = $currentPage === basename($region['href']);
+        $thisColorIndex = $navColorIndex++;
+      ?>
         <a href="<?= preg_match('#^https?://#', $region['href']) ? $region['href'] : $bp . $region['href'] ?>"
-           class="sidebar__item<?= $currentPage === basename($region['href']) ? ' active' : '' ?>"
+           class="sidebar__item<?= $isActive ? ' active' : '' ?>"
            <?= !empty($region['external']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
-          <span class="sidebar__avatar"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
+          <span class="sidebar__avatar" style="background:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
           <?= htmlspecialchars($region['label']) ?>
           <?php if (!empty($region['external'])): ?>
             <i class="bi bi-box-arrow-up-right" style="margin-left:auto;font-size:11px;opacity:.6"></i>
@@ -95,26 +156,23 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 
     <div class="sidebar__section-label">Account</div>
     <nav class="sidebar__group">
-      <?php if ($user['role'] === 'admin'): ?>
-        <a href="<?= $bp ?>admin/agents.php" class="sidebar__item<?= $currentPage === 'agents.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-people-fill"></i></span> Agents
+      <?php if ($user['role'] === 'admin'):
+        $adminNavItems = [
+          ['page' => 'agents.php',             'href' => 'admin/agents.php',             'icon' => 'bi-people-fill',       'label' => 'Agents'],
+          ['page' => 'logs.php',               'href' => 'admin/logs.php',               'icon' => 'bi-journal-text',      'label' => 'Audit Log'],
+          ['page' => 'import.php',             'href' => 'admin/import.php',             'icon' => 'bi-cloud-upload-fill', 'label' => 'Import'],
+          ['page' => 'ecommerce_import.php',   'href' => 'admin/ecommerce_import.php',   'icon' => 'bi-cart-fill',         'label' => 'E-Comm Import'],
+          ['page' => 'lpg_settings.php',       'href' => 'admin/lpg_settings.php',       'icon' => 'bi-key-fill',          'label' => 'LPG Settings'],
+          ['page' => 'whatsapp_settings.php',  'href' => 'admin/whatsapp_settings.php',  'icon' => 'bi-whatsapp',          'label' => 'WhatsApp Settings'],
+        ];
+        foreach ($adminNavItems as $item):
+          $isActive = $currentPage === $item['page'];
+          $thisColorIndex = $navColorIndex++;
+      ?>
+        <a href="<?= $bp . $item['href'] ?>" class="sidebar__item<?= $isActive ? ' active' : '' ?>">
+          <span class="sidebar__icon" style="color:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><i class="bi <?= $item['icon'] ?>"></i></span> <?= htmlspecialchars($item['label']) ?>
         </a>
-        <a href="<?= $bp ?>admin/logs.php" class="sidebar__item<?= $currentPage === 'logs.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-journal-text"></i></span> Audit Log
-        </a>
-        <a href="<?= $bp ?>admin/import.php" class="sidebar__item<?= $currentPage === 'import.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-cloud-upload-fill"></i></span> Import
-        </a>
-        <a href="<?= $bp ?>admin/ecommerce_import.php" class="sidebar__item<?= $currentPage === 'ecommerce_import.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-cart-fill"></i></span> E-Comm Import
-        </a>
-        <a href="<?= $bp ?>admin/lpg_settings.php" class="sidebar__item<?= $currentPage === 'lpg_settings.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-key-fill"></i></span> LPG Settings
-        </a>
-        <a href="<?= $bp ?>admin/whatsapp_settings.php" class="sidebar__item<?= $currentPage === 'whatsapp_settings.php' ? ' active' : '' ?>">
-          <span class="sidebar__icon"><i class="bi bi-whatsapp"></i></span> WhatsApp Settings
-        </a>
-      <?php endif; ?>
+      <?php endforeach; endif; ?>
       <button type="button" id="theme-toggle-btn" class="sidebar__item">
         <span class="sidebar__icon"><i class="bi bi-moon-stars-fill" id="theme-toggle-icon"></i></span>
         <span id="theme-toggle-label">Dark Mode</span>

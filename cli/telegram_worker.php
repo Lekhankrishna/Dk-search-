@@ -105,7 +105,7 @@ try {
         echo "Waiting for the QR scan..." . PHP_EOL;
         try {
             $qr = $qr->waitForLoginOrQrCodeExpiration();
-        } catch (\Amp\CancelledException) {
+        } catch (\Amp\CancelledException $e) {
             echo "QR expired or Telegram changed data centre; generating a fresh code..." . PHP_EOL;
             $qr = $api->qrLogin();
         }
@@ -178,9 +178,14 @@ try {
                 // own flood control - confirmed 2026-07-30 in
                 // telegram-worker-output.log ("Flood, waiting 11 seconds before
                 // repeating async call of messages.getHistory..."), which cost
-                // far more time than it saved. 800ms/1.5s here is the fastest
-                // cadence observed to stay clear of that penalty while still
-                // catching a bot reply that arrives in multiple messages.
+                // far more time than it saved. 800ms is the fastest cadence
+                // observed to stay clear of that penalty, so it's untouched -
+                // do NOT lower it without re-testing against the live bot.
+                // The quiet-confirmation window (2026-08-17, "too slow") is a
+                // pure local wait *after* the bot has already replied, so it's
+                // safe to trim independently: 1.5s -> 1.0s, still comfortably
+                // more than one poll cycle (so a second confirmation poll
+                // always happens), just shaves ~0.5s off every search.
                 do {
                     $history = $api->messages->getHistory(peer: $peer, min_id: $beforeId, limit: 30);
                     foreach ($history['messages'] ?? [] as $message) {
@@ -195,7 +200,7 @@ try {
                         ];
                         $quietSince = microtime(true);
                     }
-                    if ($results && $quietSince !== null && microtime(true) - $quietSince >= 1.5) break;
+                    if ($results && $quietSince !== null && microtime(true) - $quietSince >= 1.0) break;
                     usleep(800000);
                 } while (microtime(true) < $deadline);
 

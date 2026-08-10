@@ -40,9 +40,10 @@ const FLASK_BASE = 'http://127.0.0.1:9197';
 function proxyToFlask(string $method, string $path, ?array $body = null, ?callable $onResponse = null): void {
     $ch = curl_init(FLASK_BASE . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    // A single search can legitimately take well over a minute (up to 25
-    // numbers, each a real SDMS portal lookup) - this is just the proxy
-    // hop timeout for one HTTP call, not a limit on the search job itself
+    // A single search can legitimately take well over a minute (up to 500
+    // numbers for an admin, each a real SDMS portal lookup, processed one
+    // at a time) - this is just the proxy hop timeout for one HTTP call,
+    // not a limit on the search job itself
     // (the frontend polls /api/search/<job_id> repeatedly instead of
     // holding one request open for the whole batch).
     curl_setopt($ch, CURLOPT_TIMEOUT, 15);
@@ -74,7 +75,11 @@ $action = $_GET['action'] ?? '';
 
 if ($action === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true) ?: [];
-    proxyToFlask('POST', '/api/search', ['numbers' => $data['numbers'] ?? []]);
+    // The 10-number cap is meant for agents; admins can run larger batches.
+    // isAdmin is decided here from the actual session role, not trusted from
+    // the request body - app.py just does what this proxy tells it.
+    $isAdmin = (currentUser()['role'] ?? '') === 'admin';
+    proxyToFlask('POST', '/api/search', ['numbers' => $data['numbers'] ?? [], 'isAdmin' => $isAdmin]);
 } elseif ($action === 'status') {
     $jobId = $_GET['jobId'] ?? '';
     if (!preg_match('/^[0-9a-f]{32}$/', $jobId)) {

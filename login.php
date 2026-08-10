@@ -21,12 +21,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($user['expires_at'] !== null && strtotime($user['expires_at']) <= time()) {
             $error = 'This account has expired. Please contact an administrator.';
         } else {
-            // A fresh token here invalidates any session already open elsewhere for
-            // this user — the next request on that older session will see a
-            // mismatch against this new DB value and get signed out automatically.
+            // Each account gets up to max_concurrent_sessions active device
+            // slots (Admin > Agents > "Max Simultaneous Logins", default 1 -
+            // same as the old single-session behaviour). A login beyond that
+            // limit evicts the least-recently-used session rather than being
+            // refused - same "a new login always wins" spirit the old
+            // single-token version had, just extended past one slot instead
+            // of always kicking the only other session.
+            $maxSessions = max(1, (int) $user['max_concurrent_sessions']);
+            $countStmt = $pdo->prepare('SELECT COUNT(*) FROM user_sessions WHERE user_id = :id');
+            $countStmt->execute(['id' => $user['id']]);
+            $currentCount = (int) $countStmt->fetchColumn();
+            $toEvict = max(0, $currentCount - $maxSessions + 1);
+            if ($toEvict > 0) {
+                // $toEvict is derived from a COUNT(), not user input - safe to
+                // interpolate; PDO can't bind LIMIT as a parameter.
+                $pdo->prepare("DELETE FROM user_sessions WHERE user_id = :id ORDER BY last_seen_at ASC LIMIT {$toEvict}")
+                    ->execute(['id' => $user['id']]);
+            }
+
             $token = bin2hex(random_bytes(32));
-            $pdo->prepare('UPDATE users SET session_token = :token, last_login_at = NOW() WHERE id = :id')
-                ->execute(['token' => $token, 'id' => $user['id']]);
+            $pdo->prepare('INSERT INTO user_sessions (user_id, session_token) VALUES (:id, :token)')
+                ->execute(['id' => $user['id'], 'token' => $token]);
+            $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = :id')
+                ->execute(['id' => $user['id']]);
 
             session_regenerate_id(true);
             $_SESSION['user_id']       = $user['id'];
@@ -51,9 +69,8 @@ if ($error === '' && ($_GET['reason'] ?? '') === 'session_replaced') {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM Portal — Login</title>
+  <title>lookup — Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -65,10 +82,7 @@ if ($error === '' && ($_GET['reason'] ?? '') === 'session_replaced') {
     <div class="login-box">
 
       <div class="login-logo">
-        <div class="login-logo__icon">
-          <i class="bi bi-diagram-3-fill"></i>
-        </div>
-        <h1 class="login-logo__title">CRM Portal</h1>
+        <h1 class="login-logo__title">lookup</h1>
         <p class="login-logo__sub">Secure sign-in to your account</p>
       </div>
 

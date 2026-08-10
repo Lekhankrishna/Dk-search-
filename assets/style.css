@@ -1,30 +1,37 @@
 /* =============================================================================
-   CRM Portal — Premium Design System v2 (Light Purple Theme)
+   lookup — Premium Design System v2 (Light Purple Theme)
    ============================================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap');
 
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
+  /* Dark black is the only theme (2026-08-14, at the user's request - was
+     dark purple, deemed "not good"). Neutral near-black rather than pure
+     #000 so surfaces/borders can still read as distinct steps; a hint of
+     blue-grey keeps text from looking harsh, same idea as GitHub/Discord
+     dark mode. Accent colours are unchanged (#4f46e5 etc.) - they already
+     read fine against black, no reason to touch them. */
   --c-accent:       #4f46e5;
   --c-accent-hover: #4338ca;
   --c-accent-light: #ede9fb;
   --c-accent-glow:  rgba(79,70,229,.25);
 
-  --c-success:       #10b981; --c-success-bg: rgba(16,185,129,.12); --c-success-border: rgba(16,185,129,.4);
-  --c-warning:       #f59e0b; --c-warning-bg: rgba(245,158,11,.12); --c-warning-border: rgba(245,158,11,.4);
-  --c-danger:        #f87171; --c-danger-bg:  rgba(248,113,113,.12); --c-danger-border:  rgba(248,113,113,.4);
-  --c-info:          #38bdf8; --c-info-bg:    rgba(56,189,248,.12); --c-info-border:    rgba(56,189,248,.4);
+  --c-success:       #10b981; --c-success-bg: rgba(16,185,129,.16); --c-success-border: rgba(16,185,129,.4);
+  --c-warning:       #f59e0b; --c-warning-bg: rgba(245,158,11,.16); --c-warning-border: rgba(245,158,11,.4);
+  --c-danger:        #f87171; --c-danger-bg:  rgba(248,113,113,.16); --c-danger-border:  rgba(248,113,113,.4);
+  --c-info:          #38bdf8; --c-info-bg:    rgba(56,189,248,.16); --c-info-border:    rgba(56,189,248,.4);
 
-  --c-bg:         #eeeef6;
-  --c-surface:    #ffffff;
-  --c-surface-2:  #eeeef6;
-  --c-border:     #e0e0e0;
-  --c-sidebar-bg: #ffffff;
+  --c-bg:         #0d0d11;
+  --c-surface:    #18181e;
+  --c-surface-2:  #131317;
+  --c-border:     #2a2a31;
+  --c-sidebar-bg: #09090b;
 
-  --c-text:      #333333;
-  --c-text-muted:#555555;
-  --c-text-soft: #999999;
+  --c-text:      #f0f0f3;
+  --c-text-muted:#a8a8b3;
+  --c-text-soft: #75757f;
 
   --r-sm:4px; --r-md:12px; --r-lg:12px; --r-xl:12px; --r-full:9999px;
 
@@ -40,59 +47,12 @@
   --font-mono:'Consolas','Cascadia Code','Courier New',monospace;
 }
 
-/* ── Light theme override (toggled via html[data-theme="light"]) ────────────── */
-html[data-theme="light"] {
-  --c-bg:         #eeeef6;
-  --c-surface:    #ffffff;
-  --c-surface-2:  #eeeef6;
-  --c-border:     #e0e0e0;
-  --c-sidebar-bg: #ffffff;
-
-  --c-text:      #333333;
-  --c-text-muted:#555555;
-  --c-text-soft: #999999;
-
-  --shadow-xs:  0 1px 2px rgba(0,0,0,.05);
-  --shadow-sm:  0 2px 8px rgba(0,0,0,.08);
-  --shadow-md:  0 4px 6px -1px rgba(0,0,0,.08),0 2px 4px -1px rgba(0,0,0,.05);
-  --shadow-lg:  0 10px 25px -5px rgba(0,0,0,.12),0 8px 10px -6px rgba(0,0,0,.06);
-  --shadow-xl:  0 20px 40px -10px rgba(0,0,0,.15);
-  --shadow-accent: 0 4px 18px rgba(79,70,229,.3);
-
-  color-scheme: light;
-}
-html[data-theme="light"] *{scrollbar-color:#cccccc #f0f0f0;}
-html[data-theme="light"] ::-webkit-scrollbar-track{background:#f0f0f0;}
-html[data-theme="light"] ::-webkit-scrollbar-thumb{background:#cccccc;}
-html[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:#aaaaaa;}
-html[data-theme="light"] code{color:#555555;}
-html[data-theme="light"] .na{color:#aaaaaa;}
-html[data-theme="light"] .pg-btn.pg-disabled,
-html[data-theme="light"] .pg-btn[disabled]{color:#cccccc;}
-html[data-theme="light"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
-html[data-theme="light"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{color:#cccccc!important;}
-html[data-theme="light"] body.login-page{
-  background:linear-gradient(160deg,#eeeef6 0%,#ffffff 100%);
-}
-html[data-theme="light"] body.login-page::before{
-  background-image:
-    radial-gradient(circle at 20% 20%,rgba(0,0,0,.02) 0%,transparent 50%),
-    radial-gradient(circle at 80% 80%,rgba(79,70,229,.08) 0%,transparent 50%);
-}
-html[data-theme="light"] .login-box{
-  background:rgba(255,255,255,.97);
-  box-shadow:0 32px 64px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);
-}
-
-/* ── Theme toggle control ─────────────────────────────────────────────────── */
-button.sidebar__item{
-  width:100%;background:none;border:none;border-left:3px solid transparent;
-  text-align:left;font-family:var(--font);cursor:pointer;font-size:13px;
-}
-
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;}
-html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;color-scheme:light;overflow-x:hidden;}
+/* Dark again (2026-08-07) alongside the base :root palette above - matches
+   the actual background so native form-control chrome (autofill,
+   scrollbars) renders correctly. */
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;color-scheme:dark;overflow-x:hidden;}
 body{
   margin:0;font-family:var(--font);font-size:14px;line-height:1.6;
   color:var(--c-text);background:var(--c-bg);
@@ -100,18 +60,36 @@ body{
   overflow-x:hidden;max-width:100vw;
 }
 a{color:var(--c-accent);}
+/* Browser autofill (e.g. a previously-searched mobile number) forces its
+   own background via this pseudo-class, ignoring normal `background` CSS -
+   this is the standard override technique (a huge inset box-shadow, since
+   background-color itself can't win here) so autofilled fields still match
+   the current theme instead of showing stuck in a light box. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active{
+  -webkit-box-shadow:0 0 0 1000px var(--c-surface) inset!important;
+  -webkit-text-fill-color:var(--c-text)!important;
+  caret-color:var(--c-text);
+  transition:background-color 5000s ease-in-out 0s;
+}
 code{
   font-family:var(--font-mono);background:var(--c-surface);
-  border:1px solid var(--c-border);padding:1px 6px;color:#555555;
+  border:1px solid var(--c-border);padding:1px 6px;color:var(--c-text-muted);
   border-radius:var(--r-sm);font-size:12px;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
-*{scrollbar-color:#cccccc #f0f0f0;scrollbar-width:thin;}
+/* Theme-aware (was hardcoded light-gray-on-light-gray regardless of theme -
+   the same bug as the page titles/autofill: never updated once dark became
+   the real default, so it could look like a washed-out grey/black smudge
+   against the new dark background instead of a normal scrollbar). */
+*{scrollbar-color:var(--c-border) var(--c-surface);scrollbar-width:thin;}
 ::-webkit-scrollbar{width:10px;height:10px;}
-::-webkit-scrollbar-track{background:#f0f0f0;}
-::-webkit-scrollbar-thumb{background:#cccccc;border-radius:8px;}
-::-webkit-scrollbar-thumb:hover{background:#aaaaaa;}
+::-webkit-scrollbar-track{background:var(--c-surface);}
+::-webkit-scrollbar-thumb{background:var(--c-border);border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:var(--c-text-soft);}
 
 /* ── Keyframe animations ────────────────────────────────────────────────────── */
 @keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
@@ -127,7 +105,13 @@ code{
 }
 
 /* ── App shell / Sidebar ───────────────────────────────────────────────────── */
-.app-shell{display:flex;align-items:stretch;min-height:100vh;}
+/* No min-height:100vh here (2026-08-03) - .sidebar is position:fixed with
+   its own height:100vh, so it doesn't need the shell to be tall to render
+   correctly. Forcing the shell to always be at least the full viewport was
+   what left a large empty coloured area below short result sets (e.g. a
+   single-row search result) - now the shell's height comes from .app-main's
+   actual content, same as any normal flow layout. */
+.app-shell{display:flex;align-items:stretch;}
 
 .sidebar{
   width:212px;flex-shrink:0;
@@ -140,13 +124,10 @@ code{
   display:flex;align-items:center;gap:10px;color:var(--c-text);
   text-decoration:none;font-weight:800;font-size:15px;letter-spacing:-.2px;
 }
-.sidebar__brand-icon{
-  width:30px;height:30px;flex-shrink:0;
-  background:var(--c-accent-light);
-  border:1px solid var(--c-border);border-radius:10px;
-  display:flex;align-items:center;justify-content:center;font-size:14px;
-  color:var(--c-accent);
-}
+/* "lookup" wordmark (2026-08-11, replacing "CRM Portal") - approximated in
+   a rounded display font since the reference logo's crescent-cutout "o"
+   glyphs are custom artwork, not something any font reproduces exactly. */
+.sidebar__brand-text{font-family:'Baloo 2',var(--font);font-weight:700;font-size:28px;color:#2e9e3f;letter-spacing:0;}
 .sidebar__hamburger{
   background:none;border:none;color:var(--c-text-muted);font-size:18px;
   cursor:pointer;padding:4px;line-height:1;border-radius:6px;transition:background var(--t),color var(--t);
@@ -203,7 +184,19 @@ code{
 .sidebar__footer-logout:hover{color:#e05252;}
 
 /* ── App main / top bar ───────────────────────────────────────────────────── */
-.app-main{flex:1;min-width:0;background:var(--c-bg);min-height:100vh;margin-left:212px;}
+/* Flat black on every page (2026-08-15, "here also" - a per-page colour
+   wash, e.g. indigo on Andhra Pradesh, was still leaving a purple cast
+   even after --c-bg went black). Dropped the --page-accent-rgb tint layer
+   entirely instead of tuning its opacity again - the user wants black,
+   not "black with a hue," so every page now just shows var(--c-bg).
+   min-height:100vh (2026-08-06) - .app-shell deliberately has no min-height
+   (see its own comment) so short pages don't grow taller than their
+   content; without it here, a short page's background would cut off
+   mid-viewport into whatever's behind .app-main. */
+.app-main{
+  flex:1;min-width:0;margin-left:212px;min-height:100vh;
+  background:var(--c-bg);
+}
 .app-topbar{
   display:flex;align-items:center;justify-content:flex-end;gap:16px;
   padding:16px 28px 0;flex-wrap:wrap;
@@ -231,14 +224,14 @@ code{
 
 /* ── Page title ────────────────────────────────────────────────────────────── */
 .page-title-main{
-  font-size:26px;font-weight:800;color:#1a1a2e;
+  font-size:26px;font-weight:800;color:var(--c-text);
   letter-spacing:.3px;margin:6px 0 16px;
 }
 
 /* ── Admin page headers ────────────────────────────────────────────────────── */
 .page-header{margin:6px 0 18px;}
 .page-title{
-  font-size:22px;font-weight:800;color:#1a1a2e;letter-spacing:-.2px;
+  font-size:22px;font-weight:800;color:var(--c-text);letter-spacing:-.2px;
   display:flex;align-items:center;gap:9px;margin:0 0 4px;
 }
 .page-title .bi{color:var(--c-accent);font-size:20px;}
@@ -277,6 +270,16 @@ code{
 .sp-stat--accent{background:var(--c-accent-light);border-color:rgba(79,70,229,.4);}
 .sp-stat--accent span{color:var(--c-accent);}
 
+/* Colour-coded stat tiles (2026-08-03) - same rotating-hue idea as .card,
+   applied to the summary number tiles at the top of pages like Agents. */
+.sp-stat{border-top:3px solid rgb(124,58,237);}
+.sp-stat:nth-of-type(6n+1){border-top-color:rgb(219,39,119);} .sp-stat:nth-of-type(6n+1) span{color:rgb(219,39,119);}
+.sp-stat:nth-of-type(6n+2){border-top-color:rgb(124,58,237);} .sp-stat:nth-of-type(6n+2) span{color:rgb(124,58,237);}
+.sp-stat:nth-of-type(6n+3){border-top-color:rgb(234,88,12);}  .sp-stat:nth-of-type(6n+3) span{color:rgb(234,88,12);}
+.sp-stat:nth-of-type(6n+4){border-top-color:rgb(5,150,105);}  .sp-stat:nth-of-type(6n+4) span{color:rgb(5,150,105);}
+.sp-stat:nth-of-type(6n+5){border-top-color:rgb(37,99,235);}  .sp-stat:nth-of-type(6n+5) span{color:rgb(37,99,235);}
+.sp-stat:nth-of-type(6n+6){border-top-color:rgb(225,29,72);}  .sp-stat:nth-of-type(6n+6) span{color:rgb(225,29,72);}
+
 .sp-row{
   display:flex;align-items:center;gap:12px;padding:9px 20px;
   border-bottom:1px solid var(--c-border);
@@ -295,6 +298,40 @@ code{
 .sp-pill:hover{background:var(--c-surface-2);color:var(--c-text);border-color:var(--c-accent);}
 .sp-pill.active{background:var(--c-accent);color:#ffffff;border:none;font-weight:700;
   box-shadow:var(--shadow-accent);}
+
+/* Each search-mode pill gets its own colour (2026-08-08, "add the colour
+   to here") - was flat/monochrome (every pill the same grey, active always
+   plain indigo regardless of which mode). Same 9-colour rotation used for
+   sidebar items / table columns elsewhere in the app, via a custom
+   property so hover/active only need one rgb()/rgba() each. */
+#mode-pills .sp-pill:nth-child(1){--pill-c:79,70,229;}
+#mode-pills .sp-pill:nth-child(2){--pill-c:219,39,119;}
+#mode-pills .sp-pill:nth-child(3){--pill-c:124,58,237;}
+#mode-pills .sp-pill:nth-child(4){--pill-c:217,119,6;}
+#mode-pills .sp-pill:nth-child(5){--pill-c:225,29,72;}
+#mode-pills .sp-pill:nth-child(6){--pill-c:2,132,199;}
+#mode-pills .sp-pill:nth-child(7){--pill-c:5,150,105;}
+#mode-pills .sp-pill:nth-child(8){--pill-c:13,148,136;}
+#mode-pills .sp-pill:nth-child(9){--pill-c:234,88,12;}
+/* Solid fill even at rest (2026-08-13, "make more visible like mobile but
+   different colour") - the tinted-at-rest version (rgba(...,.13)) still
+   read as much duller than the solid active pill, so every pill now gets
+   the same bold solid-colour treatment "Mobile Number" always had, just
+   each in its own colour; the scale+pulse below is what marks the one
+   that's actually selected. */
+#mode-pills .sp-pill{background:rgb(var(--pill-c));color:#fff;border-color:rgb(var(--pill-c));
+  box-shadow:0 2px 8px rgba(var(--pill-c),.35);}
+#mode-pills .sp-pill:hover{filter:brightness(1.12);box-shadow:0 4px 14px rgba(var(--pill-c),.5);}
+/* Active pill "pops" (2026-08-09) - scaled up + a pulsing ring in its own
+   colour, so the selected mode reads as unmistakably active at a glance
+   instead of just a slightly-brighter version of the same pill shape. */
+#mode-pills .sp-pill.active{background:rgb(var(--pill-c));border-color:rgb(var(--pill-c));color:#fff;
+  transform:scale(1.07);animation:pillPulse 1.8s ease-out infinite;}
+@keyframes pillPulse{
+  0%  {box-shadow:0 4px 14px rgba(var(--pill-c),.45),0 0 0 0   rgba(var(--pill-c),.55);}
+  70% {box-shadow:0 4px 14px rgba(var(--pill-c),.45),0 0 0 8px rgba(var(--pill-c),0);}
+  100%{box-shadow:0 4px 14px rgba(var(--pill-c),.45),0 0 0 0   rgba(var(--pill-c),0);}
+}
 
 /* State pill colours when active — unified to accent per theme */
 .sp-pill--ka.active{background:var(--c-accent);border-color:var(--c-accent);color:#ffffff;}
@@ -341,6 +378,28 @@ code{
 .sp-btn-export:hover{background:#0d9668;transform:translateY(-1px);
   box-shadow:0 6px 20px rgba(16,185,129,.45);}
 
+/* ── Confetti (2026-08-08, index.php) ──────────────────────────────────────── */
+/* Fixed to the right-hand content panel only - left offset matches the
+   sidebar's 212px width (see .sidebar) so it never covers the sidebar, and
+   spans the full panel height/width rather than being boxed into the
+   results card. pointer-events:none so it never blocks clicking anything
+   underneath - purely decorative, shown only while a search has found
+   results (see startConfetti()/stopConfetti() in index.php). Left offset
+   collapses to 0 on mobile alongside the sidebar (see responsive section). */
+.confetti-container{position:fixed;top:0;left:212px;right:0;bottom:0;z-index:250;overflow:hidden;pointer-events:none;}
+.confetti-piece{
+  position:absolute;top:-24px;opacity:.85;border-radius:1px;
+  animation-name:confetti-float;animation-timing-function:linear;animation-iteration-count:infinite;
+  will-change:transform;
+}
+@keyframes confetti-float{
+  0%  {transform:translate(0,0)                 rotate(var(--rot-start));}
+  25% {transform:translate(var(--sway),27vh)     rotate(calc(var(--rot-start) + 90deg));}
+  50% {transform:translate(0,55vh)               rotate(calc(var(--rot-start) + 180deg));}
+  75% {transform:translate(calc(var(--sway) * -1),82vh) rotate(calc(var(--rot-start) + 270deg));}
+  100%{transform:translate(0,112vh)              rotate(calc(var(--rot-start) + 360deg));}
+}
+
 /* ── Results wrapper ─────────────────────────────────────────────────────────── */
 .results-wrap{
   background:var(--c-surface);border-radius:12px;
@@ -369,6 +428,26 @@ code{
 .card-title{font-size:12.5px;font-weight:700;color:var(--c-text);flex:1;letter-spacing:-.1px;}
 .card-body{padding:14px;}
 .card-body.p-0{padding:0;overflow-x:auto;}
+
+/* Colour-coded card accents (2026-08-03), app-wide - cards rotate through
+   the same 6-of-the-12-hue subset via nth-of-type, so this needs no
+   per-page edits across the many admin pages that use .card. !important on
+   the header icon colour is deliberate: most pages set that icon's colour
+   inline (style="color:var(--c-accent)") directly in their markup, which
+   would otherwise always beat a plain class rule regardless of specificity. */
+.card{border-left:4px solid rgb(124,58,237);}
+.card:nth-of-type(6n+1){border-left-color:rgb(219,39,119);}
+.card:nth-of-type(6n+2){border-left-color:rgb(124,58,237);}
+.card:nth-of-type(6n+3){border-left-color:rgb(234,88,12);}
+.card:nth-of-type(6n+4){border-left-color:rgb(5,150,105);}
+.card:nth-of-type(6n+5){border-left-color:rgb(37,99,235);}
+.card:nth-of-type(6n+6){border-left-color:rgb(225,29,72);}
+.card:nth-of-type(6n+1) .card-header i{color:rgb(219,39,119)!important;}
+.card:nth-of-type(6n+2) .card-header i{color:rgb(124,58,237)!important;}
+.card:nth-of-type(6n+3) .card-header i{color:rgb(234,88,12)!important;}
+.card:nth-of-type(6n+4) .card-header i{color:rgb(5,150,105)!important;}
+.card:nth-of-type(6n+5) .card-header i{color:rgb(37,99,235)!important;}
+.card:nth-of-type(6n+6) .card-header i{color:rgb(225,29,72)!important;}
 
 /* ── State selector grid ────────────────────────────────────────────────────── */
 .state-selector{
@@ -589,7 +668,50 @@ table.results-table{
 table#results{
   table-layout:fixed;
   min-width:880px;
+  /* Gapped rounded-pill cells (2026-08-03), matching the reference tool -
+     separate (not collapsed) borders so border-spacing actually creates a
+     gap between cells, each individually rounded rather than one
+     continuous bordered grid. */
+  border-collapse:separate;
+  border-spacing:5px;
 }
+table#results.results-table thead th{border-radius:8px;font-size:12.5px;}
+/* Brighter/bigger text (2026-08-04), text colour kept black per explicit
+   request (2026-08-05) rather than white. */
+table#results.results-table tbody td{color:#000;font-size:14px;text-align:center;white-space:normal;overflow:visible;text-overflow:clip;}
+table#results.results-table tbody td{border-radius:8px;}
+
+/* Colour-coded columns (2026-08-03) - one colour per field, same idea as
+   pan_india.php's results table. This table's 10 columns are fixed (no
+   colReorder), so plain nth-child targeting is safe here, unlike PAN
+   India's dynamic field set which needs the palette assigned in JS. Each
+   th is a solid pill; each td gets a light tint of that same hue plus a
+   left accent border. Existing per-cell chips (chip-mobile, col-dob,
+   genderBadge, chip-id, etc.) are untouched - this only colours the
+   header bar and the cell background behind them, an ID selector
+   (#results) so it reliably wins over the plain accent-purple rules below.
+   Needs both the ID AND a #results-scoped selector on td/th match the
+   table.results-table thead th{...} / tbody td{...} rules further down. */
+table#results.results-table thead th:nth-child(1){background:rgb(79,70,229);}
+table#results.results-table thead th:nth-child(2){background:rgb(219,39,119);}
+table#results.results-table thead th:nth-child(3){background:rgb(124,58,237);}
+table#results.results-table thead th:nth-child(4){background:rgb(217,119,6);}
+table#results.results-table thead th:nth-child(5){background:rgb(225,29,72);}
+table#results.results-table thead th:nth-child(6){background:rgb(2,132,199);}
+table#results.results-table thead th:nth-child(7){background:rgb(5,150,105);}
+table#results.results-table thead th:nth-child(8){background:rgb(13,148,136);}
+table#results.results-table thead th:nth-child(9){background:rgb(234,88,12);}
+table#results.results-table thead th:nth-child(10){background:rgb(101,163,13);}
+table#results.results-table tbody td:nth-child(1){background:rgb(79,70,229);}
+table#results.results-table tbody td:nth-child(2){background:rgb(219,39,119);}
+table#results.results-table tbody td:nth-child(3){background:rgb(124,58,237);}
+table#results.results-table tbody td:nth-child(4){background:rgb(217,119,6);}
+table#results.results-table tbody td:nth-child(5){background:rgb(225,29,72);}
+table#results.results-table tbody td:nth-child(6){background:rgb(2,132,199);}
+table#results.results-table tbody td:nth-child(7){background:rgb(5,150,105);}
+table#results.results-table tbody td:nth-child(8){background:rgb(13,148,136);}
+table#results.results-table tbody td:nth-child(9){background:rgb(234,88,12);}
+table#results.results-table tbody td:nth-child(10){background:rgb(101,163,13);}
 
 /* Header */
 table.results-table thead tr{
@@ -656,7 +778,7 @@ table.results-table tbody td:nth-child(2){padding-left:4px;}
 .col-email{font-size:12.5px;color:#38bdf8;font-weight:500;
   white-space:normal;word-break:break-word;display:block;}
 .col-wrap{white-space:normal;word-break:break-word;display:block;}
-.na{color:#aaaaaa;font-size:12.5px;}
+.na{color:var(--c-text-soft);font-size:12.5px;}
 
 .chip-mobile{
   font-family:var(--font-mono);font-size:12.5px;
@@ -689,7 +811,12 @@ table.results-table tbody td:nth-child(2){padding-left:4px;}
 .badge-neutral{background:var(--c-surface);color:var(--c-text-muted);border:1px solid var(--c-border);}
 .badge-primary{background:var(--c-accent-light);color:var(--c-accent);border:1px solid rgba(79,70,229,.35);}
 
-/* ── Search results table: plain black text only, no colour ────────────────── */
+/* ── Search results table: plain text only, no chip colours ─────────────────
+   Kept flat/uncoloured on purpose (no rainbow chip backgrounds competing
+   with the per-column cell tints). Colour is fixed black, not
+   var(--c-text) (so it won't drift if the theme changes again) - kept
+   black per explicit request (2026-08-05) rather than white, despite the
+   cell backgrounds being vividly coloured regardless of page theme. */
 table#results .col-name,
 table#results .col-addr,
 table#results .col-email,
@@ -698,7 +825,7 @@ table#results .chip-mobile,
 table#results .chip-id,
 table#results .na,
 table#results .badge{
-  color:#000000!important;
+  color:#000!important;
   background:transparent!important;
   border-color:transparent!important;
   box-shadow:none!important;
@@ -739,6 +866,18 @@ table#results .badge{
   flex-wrap:wrap;gap:8px;
 }
 .dt-info{font-size:11.5px;color:var(--c-text-soft);}
+.dt-info-group{display:flex;align-items:center;gap:8px;}
+.dt-timing-badge{
+  display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;
+  background:var(--c-success-bg);color:var(--c-success);font-size:11px;font-weight:700;
+}
+.dt-copy-btn{
+  display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 16px;
+  border:none;border-radius:999px;background:var(--c-accent);color:#fff;
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;
+  box-shadow:var(--shadow-accent);transition:transform 120ms,box-shadow 120ms;
+}
+.dt-copy-btn:hover{transform:translateY(-1px);background:var(--c-accent-hover);}
 .dt-pagination{display:flex;align-items:center;gap:3px;}
 .pg-btn{
   border:1px solid var(--c-border);border-radius:7px;
@@ -861,10 +1000,64 @@ div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{
 table.agents-table td{vertical-align:middle;padding:12px 14px;}
 table.agents-table thead th{white-space:nowrap;}
 
+/* Colour-coded columns (2026-08-03, toned down 2026-08-04, renumbered
+   2026-08-19 for the Pan India Access column, renumbered again 2026-08-21
+   when Created was hidden and LPG/Pan India header labels were shortened) -
+   same palette as index.php, but this table is much busier (status/role
+   badges, an inline expiry-date form, action buttons all sharing a row) so
+   a .55 cell tint was too loud and fought with them for attention -
+   dropped to a light .14 wash, gapped/rounded like the results table
+   instead of solid-bordered, so columns read as separated without
+   dominating. #accounts-table's ID gives the specificity needed to beat
+   the plain .results-table thead th accent-purple rule. ID (col 1, just a
+   number) and Actions (col 9, has its own buttons) are left uncoloured.
+   Pan India (col 7) is purple to match Pan India's own accent colour
+   elsewhere in the app (pan_india.php's tabs/heading). */
+table#accounts-table{border-collapse:separate;border-spacing:4px;}
+table#accounts-table thead th{border-radius:7px;}
+table#accounts-table tbody td{border-radius:7px;}
+table#accounts-table thead th:nth-child(2){background:rgb(219,39,119);}
+table#accounts-table thead th:nth-child(3){background:rgb(234,88,12);}
+table#accounts-table thead th:nth-child(4){background:rgb(5,150,105);}
+table#accounts-table thead th:nth-child(5){background:rgb(13,148,136);}
+table#accounts-table thead th:nth-child(6){background:rgb(37,99,235);}
+table#accounts-table thead th:nth-child(7){background:rgb(124,58,237);}
+table#accounts-table thead th:nth-child(8){background:rgb(225,29,72);}
+table#accounts-table tbody td:nth-child(2){background:rgba(219,39,119,.14);}
+table#accounts-table tbody td:nth-child(3){background:rgba(234,88,12,.14);}
+table#accounts-table tbody td:nth-child(4){background:rgba(5,150,105,.14);}
+table#accounts-table tbody td:nth-child(5){background:rgba(13,148,136,.14);}
+table#accounts-table tbody td:nth-child(6){background:rgba(37,99,235,.14);}
+table#accounts-table tbody td:nth-child(7){background:rgba(124,58,237,.14);}
+table#accounts-table tbody td:nth-child(8){background:rgba(225,29,72,.14);}
+
+/* Colour-coded columns (2026-08-03), same palette/approach - Audit Log. */
+table#log-table thead th:nth-child(1){background:rgb(219,39,119);}
+table#log-table thead th:nth-child(2){background:rgb(124,58,237);}
+table#log-table thead th:nth-child(3){background:rgb(234,88,12);}
+table#log-table thead th:nth-child(4){background:rgb(5,150,105);}
+table#log-table thead th:nth-child(5){background:rgb(13,148,136);}
+table#log-table thead th:nth-child(6){background:rgb(37,99,235);}
+table#log-table tbody td:nth-child(1){background:rgba(219,39,119,.55);border-left:3px solid rgba(219,39,119,.65);}
+table#log-table tbody td:nth-child(2){background:rgba(124,58,237,.55);border-left:3px solid rgba(124,58,237,.65);}
+table#log-table tbody td:nth-child(3){background:rgba(234,88,12,.55);border-left:3px solid rgba(234,88,12,.65);}
+table#log-table tbody td:nth-child(4){background:rgba(5,150,105,.55);border-left:3px solid rgba(5,150,105,.65);}
+table#log-table tbody td:nth-child(5){background:rgba(13,148,136,.55);border-left:3px solid rgba(13,148,136,.65);}
+table#log-table tbody td:nth-child(6){background:rgba(37,99,235,.55);border-left:3px solid rgba(37,99,235,.65);}
+
+/* Colour-coded columns (2026-08-03), same palette/approach - WhatsApp
+   Settings allowlist. Column 1 (checkbox) left uncoloured. */
+table#wa-users-table thead th:nth-child(2){background:rgb(219,39,119);}
+table#wa-users-table thead th:nth-child(3){background:rgb(124,58,237);}
+table#wa-users-table thead th:nth-child(4){background:rgb(234,88,12);}
+table#wa-users-table tbody td:nth-child(2){background:rgba(219,39,119,.55);border-left:3px solid rgba(219,39,119,.65);}
+table#wa-users-table tbody td:nth-child(3){background:rgba(124,58,237,.55);border-left:3px solid rgba(124,58,237,.65);}
+table#wa-users-table tbody td:nth-child(4){background:rgba(234,88,12,.55);border-left:3px solid rgba(234,88,12,.65);}
+
 /* ── Login page ──────────────────────────────────────────────────────────── */
 body.login-page{
   min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(160deg,#eeeef6 0%,#ffffff 100%);
+  background:#0d0d11;
   position:relative;overflow:hidden;
 }
 body.login-page::before{
@@ -875,22 +1068,19 @@ body.login-page::before{
   pointer-events:none;
 }
 .login-wrap{position:relative;z-index:1;width:100%;max-width:420px;padding:16px;}
+/* Card matches the app's own dark surface (2026-08-12) - was hardcoded
+   near-white, left over from the original light theme, so it clashed
+   with the dark login-box .form-control inputs inside it (which already
+   used var(--c-surface)) and with the rest of the now-dark app. */
 .login-box{
-  background:rgba(255,255,255,.97);backdrop-filter:blur(20px);
+  background:var(--c-surface);backdrop-filter:blur(20px);
   border:1px solid var(--c-border);
   border-radius:var(--r-xl);padding:44px 40px;
-  box-shadow:0 32px 64px rgba(0,0,0,.12),0 0 0 1px rgba(79,70,229,.06);
+  box-shadow:0 32px 64px rgba(0,0,0,.45),0 0 0 1px rgba(79,70,229,.15);
   animation:fadeUp .5s ease both;
 }
 .login-logo{text-align:center;margin-bottom:32px;}
-.login-logo__icon{
-  width:60px;height:60px;
-  background:linear-gradient(135deg,var(--c-accent-hover),var(--c-accent));
-  border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
-  font-size:26px;color:#ffffff;margin-bottom:14px;
-  box-shadow:0 10px 28px rgba(79,70,229,.4);
-}
-.login-logo__title{font-size:24px;font-weight:800;color:var(--c-text);margin:0 0 5px;letter-spacing:-.3px;}
+.login-logo__title{font-family:'Baloo 2',var(--font);font-size:32px;font-weight:700;color:#2e9e3f;margin:0 0 5px;letter-spacing:0;}
 .login-logo__sub{margin:0;color:var(--c-text-muted);font-size:13px;}
 .login-box .form-group{margin-bottom:16px;}
 .login-box .form-label{
@@ -944,6 +1134,7 @@ ul.skipped-list li{margin-bottom:3px;}
   }
   .sidebar.sidebar--open{transform:translateX(0);box-shadow:0 0 30px rgba(0,0,0,.15);}
   .app-main{margin-left:0;}
+  .confetti-container{left:0;}
   .app-topbar{padding:14px 16px 0;}
   .container{padding:16px 14px 40px;}
   .hero{padding:22px 20px;} .hero__stats{display:none;}
@@ -966,56 +1157,101 @@ ul.skipped-list li{margin-bottom:3px;}
   .sp-stat{min-width:56px;padding:4px 8px;}
 }
 
-/* PAN India search */
+/* PAN India search
+   (Restored 2026-08-03: an earlier sync accidentally copied the dev tree's
+   style.css over this live-tree-only page's rules, since PAN India only
+   ever existed here - the dev tree's stylesheet never had this section at
+   all. Reconstructed from this session's own edit history, not just from
+   the git-committed baseline, so today's later refinements - the unified
+   results-table redesign and the red PDF button - aren't lost again.) */
 .pan-page{max-width:1120px;margin:0 auto;}
 .pan-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:12px 0 28px;}
-.pan-heading h1{margin:4px 0 8px;font-size:28px;color:var(--c-text);}
+.pan-heading h1{
+  margin:4px 0 8px;font-size:29px;font-weight:800;letter-spacing:-.3px;
+  background:linear-gradient(135deg,var(--c-text) 40%,var(--c-accent) 130%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
 .pan-heading p{margin:0;color:var(--c-text-muted);font-size:14px;}
-.pan-kicker{font-size:11px;font-weight:700;letter-spacing:.13em;color:var(--c-accent);}
+.pan-kicker{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.13em;color:var(--c-accent);}
+.pan-kicker::before{content:'';width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,#db2777,var(--c-accent));box-shadow:0 0 8px var(--c-accent-glow);}
 .pan-status{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding:8px 12px;border:1px solid var(--c-border);border-radius:999px;background:var(--c-surface);font-size:12px;color:var(--c-text-muted);}
 .pan-connect{display:flex;align-items:center;gap:9px;}
 .pan-login-link{padding:8px 12px;border-radius:999px;background:var(--c-accent);color:#fff;text-decoration:none;font-size:12px;font-weight:600;}
-.pan-search-card,.pan-results{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
-.pan-tabs{display:flex;gap:4px;padding:10px 12px 0;border-bottom:1px solid var(--c-border);background:var(--c-surface-2);}
-.pan-tab{display:flex;align-items:center;gap:7px;padding:11px 16px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--c-text-muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
-.pan-tab:hover{color:var(--c-text);}
-.pan-tab.active{color:var(--c-accent);border-bottom-color:var(--c-accent);}
+/* Made "more attractive" (2026-08-08) - rainbow top accent strip + richer
+   shadow instead of the flat bordered box, pill-style tabs instead of a
+   plain underline, gradient/lift buttons matching .btn-primary's hover
+   treatment elsewhere in the app. */
+.pan-search-card,.pan-results{
+  position:relative;background:var(--c-surface);border:1px solid var(--c-border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-lg);overflow:hidden;
+}
+.pan-search-card::before,.pan-results::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,#db2777,var(--c-accent),#0ea5e9);
+}
+.pan-tabs{display:flex;gap:6px;padding:14px 16px;border-bottom:1px solid var(--c-border);background:var(--c-surface-2);}
+/* Bold solid colour per tab, even at rest (2026-08-16, "see do here" -
+   same treatment just given to the main search-mode pills, since these
+   Email/Aadhaar/Contact tabs were still plain-text until touched). */
+.pan-tab:nth-child(1){--pill-c:79,70,229;}
+.pan-tab:nth-child(2){--pill-c:219,39,119;}
+.pan-tab:nth-child(3){--pill-c:124,58,237;}
+.pan-tab{display:flex;align-items:center;gap:7px;padding:9px 18px;border:0;border-radius:999px;
+  background:rgb(var(--pill-c));color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+  box-shadow:0 2px 8px rgba(var(--pill-c),.35);transition:filter var(--t),box-shadow var(--t),transform var(--t);}
+.pan-tab:hover{filter:brightness(1.12);box-shadow:0 4px 14px rgba(var(--pill-c),.5);}
+.pan-tab.active{transform:scale(1.07);animation:pillPulse 1.8s ease-out infinite;}
 .pan-search-row{display:flex;gap:10px;padding:22px;}
 .pan-input-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0;}
-.pan-input-wrap input{width:100%;height:44px;padding:0 15px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);color:var(--c-text);font:inherit;font-size:14px;outline:none;}
-.pan-input-wrap input:focus{border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-accent-light);}
-.pan-search-btn,.pan-clear-btn{height:44px;padding:0 20px;border-radius:var(--r-md);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
-.pan-search-btn{border:1px solid var(--c-accent);background:var(--c-accent);color:#fff;}
+.pan-input-wrap input{width:100%;height:44px;padding:0 15px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);color:var(--c-text);font:inherit;font-size:14px;outline:none;transition:border-color var(--t),box-shadow var(--t);}
+.pan-input-wrap input:focus{border-color:var(--c-accent);box-shadow:0 0 0 4px var(--c-accent-glow);}
+.pan-search-btn,.pan-clear-btn{height:44px;padding:0 22px;border-radius:var(--r-md);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:transform var(--t),box-shadow var(--t),background var(--t);}
+.pan-search-btn{border:1px solid var(--c-accent);background:linear-gradient(135deg,var(--c-accent-hover),var(--c-accent));color:#fff;box-shadow:0 6px 18px var(--c-accent-glow);}
+.pan-search-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 24px var(--c-accent-glow);}
+.pan-search-btn:active:not(:disabled){transform:translateY(0);}
 .pan-search-btn:disabled{opacity:.65;cursor:wait;}
 .pan-clear-btn{border:1px solid var(--c-border);background:var(--c-surface);color:var(--c-text-muted);}
+.pan-clear-btn:hover{background:var(--c-surface-2);color:var(--c-text);border-color:var(--c-text-soft);}
 .pan-alert{margin-top:16px;padding:12px 15px;border:1px solid rgba(239,68,68,.35);border-radius:var(--r-md);background:rgba(239,68,68,.08);color:#ef4444;font-size:13px;}
 .pan-results{margin-top:22px;}
 .pan-results-heading{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--c-border);}
 .pan-results-heading h2{margin:3px 0 0;font-size:18px;}
+.pan-results-heading>span{color:var(--c-text-muted);font-size:12px;}
 .pan-results-heading-right{display:flex;align-items:center;gap:14px;}
 .pan-results-heading-right>span{color:var(--c-text-muted);font-size:12px;}
 .pan-pdf-btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--c-danger-border);border-radius:var(--r-md);background:var(--c-surface);color:var(--c-danger);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
 .pan-pdf-btn:hover{border-color:var(--c-danger);background:var(--c-danger-bg);color:var(--c-danger);}
 #pan-result-list{padding:18px;}
-table.results-table.pan-results-table{table-layout:fixed;}
-/* Overrides table.results-table tbody td's nowrap/ellipsis (needs to match
-   its specificity - a plain .pan-results-table td rule loses to that more
-   specific selector and the ellipsis silently wins, which is exactly what
-   was truncating every column here, not just the long ones). */
+/* Real gaps between cells (2026-08-04) - was still border-collapse:collapse
+   (the base .results-table default), so adjacent same-colour cells (the
+   neutral identity columns) had no actual separation at all and merged
+   into one continuous bar; only visible between differently-coloured
+   cells, where the colour change itself masked the missing gap. */
+table.results-table.pan-results-table{
+  table-layout:fixed;
+  border-collapse:separate;
+  border-spacing:4px;
+}
 table.results-table.pan-results-table thead th{
   padding:4px 6px;font-size:9px;letter-spacing:.1px;line-height:1.25;
-  /* Headers only wrap at a space, never mid-word (keep-all + normal) - a
-     narrow column should show "PHONE" / "NUMBER" on two lines, not
-     "PHON" / "E" / "NUMB" / "ER". */
   white-space:normal;word-break:keep-all;overflow-wrap:normal;overflow:visible;
+  border-radius:6px;
+  /* Plain dark bar (2026-08-04, matching a reference tool) - column colour
+     comes from the per-column TEXT colour set inline in JS, not a coloured
+     pill background like the other tables use. Fixed colour, NOT
+     var(--c-sidebar-bg) (found 2026-08-04: that resolves to white in light
+     theme, and the "plain" columns' white header text was hardcoded to
+     match a dark bar - switching theme made those headers invisible,
+     white-on-white). Every OTHER coloured table in this app uses fixed
+     hex/rgb for the same reason - these header colours are a deliberate
+     design choice, not meant to invert with the page theme. */
+  background:#150c22;
 }
 table.results-table.pan-results-table tbody td{
   padding:4px 6px;font-size:10.5px;line-height:1.3;
-  /* Data can be one long unbroken token (e.g. a comma-run address with no
-     spaces at the wrap point) so this side still needs to force-break
-     rather than overflow the column. */
   white-space:normal;word-break:break-word;overflow-wrap:anywhere;
   overflow:visible;text-overflow:clip;
+  border-radius:6px;
 }
 .pan-result-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:var(--c-text-muted);font-size:13px;}
 .pan-spinner{width:18px;height:18px;border:2px solid var(--c-border);border-top-color:var(--c-accent);border-radius:50%;animation:pan-spin .7s linear infinite;}
