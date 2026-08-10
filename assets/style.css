@@ -992,11 +992,31 @@ ul.skipped-list li{margin-bottom:3px;}
 .pan-results{margin-top:22px;}
 .pan-results-heading{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--c-border);}
 .pan-results-heading h2{margin:3px 0 0;font-size:18px;}
-.pan-results-heading>span{color:var(--c-text-muted);font-size:12px;}
-#pan-result-list{display:grid;gap:12px;padding:18px;}
-.pan-result-card{padding:16px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);}
-.pan-result-card pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--c-text);font:inherit;font-size:13px;line-height:1.65;}
-.pan-attachment{display:inline-flex;margin-top:12px;padding:5px 9px;border-radius:999px;background:var(--c-accent-light);color:var(--c-accent);font-size:11px;font-weight:600;}
+.pan-results-heading-right{display:flex;align-items:center;gap:14px;}
+.pan-results-heading-right>span{color:var(--c-text-muted);font-size:12px;}
+.pan-pdf-btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border:1px solid var(--c-danger-border);border-radius:var(--r-md);background:var(--c-surface);color:var(--c-danger);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}
+.pan-pdf-btn:hover{border-color:var(--c-danger);background:var(--c-danger-bg);color:var(--c-danger);}
+#pan-result-list{padding:18px;}
+table.results-table.pan-results-table{table-layout:fixed;}
+/* Overrides table.results-table tbody td's nowrap/ellipsis (needs to match
+   its specificity - a plain .pan-results-table td rule loses to that more
+   specific selector and the ellipsis silently wins, which is exactly what
+   was truncating every column here, not just the long ones). */
+table.results-table.pan-results-table thead th{
+  padding:4px 6px;font-size:9px;letter-spacing:.1px;line-height:1.25;
+  /* Headers only wrap at a space, never mid-word (keep-all + normal) - a
+     narrow column should show "PHONE" / "NUMBER" on two lines, not
+     "PHON" / "E" / "NUMB" / "ER". */
+  white-space:normal;word-break:keep-all;overflow-wrap:normal;overflow:visible;
+}
+table.results-table.pan-results-table tbody td{
+  padding:4px 6px;font-size:10.5px;line-height:1.3;
+  /* Data can be one long unbroken token (e.g. a comma-run address with no
+     spaces at the wrap point) so this side still needs to force-break
+     rather than overflow the column. */
+  white-space:normal;word-break:break-word;overflow-wrap:anywhere;
+  overflow:visible;text-overflow:clip;
+}
 .pan-result-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:var(--c-text-muted);font-size:13px;}
 .pan-spinner{width:18px;height:18px;border:2px solid var(--c-border);border-top-color:var(--c-accent);border-radius:50%;animation:pan-spin .7s linear infinite;}
 .pan-spinner.small{display:inline-block;width:13px;height:13px;vertical-align:-2px;border-color:rgba(255,255,255,.35);border-top-color:#fff;}

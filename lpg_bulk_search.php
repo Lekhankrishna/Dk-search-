@@ -236,8 +236,13 @@ function poll(jobId) {
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(`lpg_search_api.php?action=status&jobId=${jobId}`);
-      if (!res.ok) throw new Error(`server returned ${res.status}`);
       const data = await res.json();
+      if (res.status === 401) {
+        clearInterval(pollTimer);
+        window.location.href = data.loginUrl || "login.php";
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || `server returned ${res.status}`);
 
       statusEl.textContent = data.status === "queued"
         ? (data.queuePosition > 0
@@ -285,15 +290,18 @@ searchBtn.addEventListener("click", async () => {
       body: JSON.stringify({ numbers })
     });
 
+    const data = await res.json();
+    if (res.status === 401) {
+      window.location.href = data.loginUrl || "login.php";
+      return;
+    }
     if (!res.ok) {
-      const err = await res.json();
-      statusEl.textContent = `Error: ${err.error || "could not start search"}`;
+      statusEl.textContent = `Error: ${data.error || "could not start search"}`;
       searchBtn.disabled = false;
       progressWrap.style.display = "none";
       return;
     }
 
-    const data = await res.json();
     statusEl.textContent = `Status: processing (0/${numbers.length})`;
     poll(data.jobId);
   } catch (err) {

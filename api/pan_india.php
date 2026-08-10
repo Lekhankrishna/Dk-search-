@@ -17,6 +17,7 @@ if (!isLoggedIn() || !isSessionValid()) {
 }
 
 require_once __DIR__ . '/../includes/telegram_worker_client.php';
+require_once __DIR__ . '/../includes/pan_india_archive.php';
 set_time_limit(60);
 
 function reply(int $status, array $data): never {
@@ -28,18 +29,40 @@ function reply(int $status, array $data): never {
     exit;
 }
 
+// Contact-number searches default to India's "91" country code + 10-digit
+// number - a plain 10-digit entry (the normal case) gets "91" prepended so
+// it matches the bot's own record format, without double-prefixing an
+// entry that already includes it (with or without a "+"/spaces/dashes).
+function normalizeContactQuery(string $query): string {
+    $digits = preg_replace('/\D+/', '', $query);
+    if (strlen($digits) === 10) {
+        return '91' . $digits;
+    }
+    return $digits;
+}
+
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') reply(405, ['ok' => false, 'error' => 'Method not allowed.']);
 
-    // Input and results exist only for this request. They are not stored in
-    // the database, a JSON file, the PHP session, or an application log.
     $type = $_POST['searchType'] ?? '';
     $query = trim((string) ($_POST['query'] ?? ''));
     if (!in_array($type, ['email', 'aadhaar', 'contact'], true) || $query === '') {
         reply(422, ['ok' => false, 'error' => 'A valid search type and query are required.']);
     }
+    if ($type === 'contact') {
+        $query = normalizeContactQuery($query);
+    }
     $response = telegramWorkerRequest(['action' => 'search', 'query' => $query], 30);
-    reply(!empty($response['ok']) ? 200 : 503, $response + ['loginUrl' => 'telegram_login.php']);
+    if (empty($response['ok'])) {
+        // Never forward the worker's own error text to the client - it can
+        // name the underlying provider or its exact failure mode. Agents
+        // just need to know the search didn't go through.
+        reply(503, ['ok' => false, 'error' => 'Server is down. Please try again later.']);
+    }
+    archivePanIndiaResults($response['results'] ?? [], currentUser()['username'] ?? 'unknown', $type, $query);
+    reply(200, $response);
 } catch (Throwable $e) {
-    reply(503, ['ok' => false, 'error' => $e->getMessage(), 'loginUrl' => 'telegram_login.php']);
+    // Same reasoning: connection refused, timeout, malformed response, etc.
+    // all collapse to one generic message rather than leaking internals.
+    reply(503, ['ok' => false, 'error' => 'Server is down. Please try again later.']);
 }
