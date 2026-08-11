@@ -179,10 +179,6 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
           <span class="sidebar__icon" style="color:rgb(<?= sidebarNavColor($thisColorIndex) ?>)"><i class="bi <?= $item['icon'] ?>"></i></span> <?= htmlspecialchars($item['label']) ?>
         </a>
       <?php endforeach; endif; ?>
-      <button type="button" id="theme-toggle-btn" class="sidebar__item">
-        <span class="sidebar__icon"><i class="bi bi-moon-stars-fill" id="theme-toggle-icon"></i></span>
-        <span id="theme-toggle-label">Dark Mode</span>
-      </button>
     </nav>
 
     <div class="sidebar__footer">
