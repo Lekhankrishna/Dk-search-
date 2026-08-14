@@ -9,8 +9,8 @@ Internal CRM/data-search portal used by agents to look up customer records acros
 - **Pan India Search** (`pan_india.php`) — email/Aadhaar/contact-number lookup against a Telegram bot via a persistent PHP MadelineProto worker (`cli/telegram_worker.php`).
 - **Advance Pan India** (`advance_pan_india.php`) — plain PHP+curl client against a Django-backed vendor site (`includes/eagleeye_client.php`).
 - **Night Out** (`pan_india_pro.php`) — plain PHP+curl client against a JSON REST API (`includes/pan_india_pro_client.php`).
-- **RC Print** / **HP LPG Search** (`rc_print.php`, `hp_gas.php`) — Selenium automation against a shared Firebase-backed vendor account (`Gas/lpg_web/`), each with its own per-agent monthly search cap.
-- **Indian LPG Search / Indian LPG Bulk Search** (`lpg_search.php`, `lpg_bulk_search.php`) — looks up IndianOil SDMS gas-connection records via the same Flask/Selenium service.
+- **RC Print** / **HP LPG Search** (`rc_print.php`, `hp_gas.php`) — Selenium automation against a shared Firebase-backed vendor account (`Gas/lpg_web/`), each with its own per-agent monthly search cap. HP LPG Search also has a Bulk Search tab (single-endpoint sequential lookups, capped at 10 numbers for agents / 50 for admins).
+- **Indian LPG Search** (`lpg_search.php`) — single/Bulk Search tabs in one page (bulk capped at 10 for agents / 500 for admins) looking up IndianOil SDMS gas-connection records via a Flask/Selenium service. `lpg_bulk_search.php` redirects here with `?mode=bulk` for old links.
 - **Advanced Search** (`advanced_search.php`) — plain PHP+curl client against an ASP.NET Core site with five separate per-region endpoints (`includes/tracekart_client.php`).
 - **WhatsApp contact button** — a site-wide floating button, admin-configurable (global on/off plus a per-user allowlist).
 - **Admin panel** (`admin/`) — account management (create/disable/delete, expiry dates), per-agent feature access + monthly usage caps, multi-device login limits, audit log, Excel export of the accounts list, and bulk import tools for state/e-commerce data.

@@ -44,7 +44,7 @@ require __DIR__ . '/includes/header.php';
   /* Same tokens/shape as rc_print.php/hp_gas.php/advance_pan_india.php's cards. */
   .as-card{background:var(--c-surface,#fff);border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
   .as-card-body{padding:20px 22px;}
-  /* State selector - pill buttons, same style as the mode tabs below.
+  /* State selector - square-box buttons, same style as the mode tabs below.
      tracekart.in itself is 5 separate per-state pages/endpoints under the
      hood (see includes/tracekart_client.php), not one combined search, so
      this determines which of those a search actually hits rather than

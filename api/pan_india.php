@@ -15,11 +15,6 @@ if (!isLoggedIn() || !isSessionValid()) {
     ]);
     exit;
 }
-if (!hasPanIndiaAccess()) {
-    http_response_code(403);
-    echo json_encode(['ok' => false, 'error' => 'Access denied: PAN India access has not been granted for this account.']);
-    exit;
-}
 
 // Real enforcement, not just hiding the sidebar link - a revoked agent who
 // already has pan_india.php open (or hits this endpoint directly) must not
