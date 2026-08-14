@@ -50,27 +50,27 @@ require __DIR__ . '/includes/header.php';
   .pip-field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#777;margin-bottom:4px;}
   .pip-field input{width:100%;padding:10px 12px;font-size:13px;color:#333;border:1px solid #e0e0e0;border-radius:8px;
     background:#fff;outline:none;transition:border-color 150ms,box-shadow 150ms;}
-  .pip-field input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.15);}
+  .pip-field input:focus{border-color:#2e9e3f;box-shadow:0 0 0 3px rgba(46,158,63,.15);}
   .pip-row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
-  .pip-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
+  .pip-btn{padding:11px 26px;border-radius:9px;border:none;background:#2e9e3f;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
-    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);}
-  .pip-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+    transition:all 150ms;box-shadow:0 4px 18px rgba(46,158,63,.3);}
+  .pip-btn:hover:not(:disabled){background:#257e32;transform:translateY(-1px);box-shadow:0 6px 20px rgba(46,158,63,.45);}
   .pip-btn:disabled{opacity:.65;cursor:wait;transform:none;}
   .pip-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
-  .pip-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .pip-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#2e9e3f;transform:none;box-shadow:none;}
   .pip-btn-excel{background:#10b981;color:#fff;box-shadow:0 4px 18px rgba(16,185,129,.3);}
   .pip-btn-excel:hover:not(:disabled){background:#0d9668;transform:translateY(-1px);box-shadow:0 6px 20px rgba(16,185,129,.45);}
   #pipStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .pip-progress-wrap{margin-top:12px;display:none;}
   .pip-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
-  .pip-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:100%;
-    background-image:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+  .pip-progress-fill{height:100%;border-radius:6px;background:#2e9e3f;width:100%;
+    background-image:repeating-linear-gradient(45deg,#2e9e3f 0 12px,#257e32 12px 24px);
     background-size:34px 100%;animation:pip-progress-stripes 1s linear infinite;}
   @keyframes pip-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .pip-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
   .pip-result-wrap{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:16px;overflow-x:auto;display:none;}
-  .pip-result-toolbar{padding:10px 16px;background:#4f46e5;color:#fff;font-size:11.5px;font-weight:700;
+  .pip-result-toolbar{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
     text-transform:uppercase;letter-spacing:.3px;}
   .pip-table{width:100%;border-collapse:collapse;font-size:11.5px;}
   .pip-table th{background:#eeeef6;color:#555;font-size:10px;font-weight:700;text-transform:uppercase;
@@ -101,7 +101,7 @@ require __DIR__ . '/includes/header.php';
   .pip-table td:nth-child(9){background:rgba(37,99,235,.08);border-left:3px solid rgba(37,99,235,.5);}
   .pip-cell-badge{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:11.5px;font-weight:700;
     padding:1px 7px;border-radius:5px;display:inline-block;letter-spacing:.2px;
-    background:rgba(79,70,229,.1);border:1px solid rgba(79,70,229,.3);color:#4338ca;}
+    background:rgba(46,158,63,.1);border:1px solid rgba(46,158,63,.3);color:#257e32;}
 </style>
 
 <div class="pip-card">

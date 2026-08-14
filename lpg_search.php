@@ -22,22 +22,22 @@ require __DIR__ . '/includes/header.php';
   .lpg-card-body{padding:16px 18px;}
   .lpg-hint{color:#999;margin:0 0 14px;font-size:13px;}
   .lpg-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
-  .lpg-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
+  .lpg-btn{padding:11px 26px;border-radius:9px;border:none;background:#2e9e3f;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
-    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);}
-  .lpg-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+    transition:all 150ms;box-shadow:0 4px 18px rgba(46,158,63,.3);}
+  .lpg-btn:hover:not(:disabled){background:#257e32;transform:translateY(-1px);box-shadow:0 6px 20px rgba(46,158,63,.45);}
   .lpg-btn:disabled{opacity:.65;cursor:wait;transform:none;}
   .lpg-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
-  .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .lpg-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#2e9e3f;transform:none;box-shadow:none;}
   .lpg-btn-sm{padding:7px 16px;font-size:11px;}
   .lpg-btn-export{background:#065f46;color:#fff;border:none;box-shadow:0 4px 18px rgba(6,95,70,.35);}
   .lpg-btn-export:hover:not(:disabled){background:#054a37;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,95,70,.5);}
   #lpgStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .lpg-progress-wrap{margin-top:12px;display:none;}
   .lpg-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
-  .lpg-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:0%;transition:width .4s ease;}
+  .lpg-progress-fill{height:100%;border-radius:6px;background:#2e9e3f;width:0%;transition:width .4s ease;}
   .lpg-progress-fill.indeterminate{width:100%;
-    background:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+    background:repeating-linear-gradient(45deg,#2e9e3f 0 12px,#257e32 12px 24px);
     background-size:34px 100%;animation:lpg-progress-stripes 1s linear infinite;}
   @keyframes lpg-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .lpg-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
@@ -45,12 +45,12 @@ require __DIR__ . '/includes/header.php';
   .lpg-results-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #e0e0e0;background:#eeeef6;}
   .lpg-results-toolbar .count{font-size:12px;color:#555;font-weight:600;}
   .lpg-table{width:100%;border-collapse:collapse;font-size:11.5px;}
-  .lpg-table thead tr{background:#4f46e5;}
+  .lpg-table thead tr{background:#2e9e3f;}
   .lpg-table th{color:#fff;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:6px 8px;text-align:left;border-right:1px solid rgba(255,255,255,.18);white-space:nowrap;}
   .lpg-table td{padding:5px 8px;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;vertical-align:top;color:#333;max-width:220px;}
   .lpg-table tbody tr:nth-child(odd){background:#fff;}
   .lpg-table tbody tr:nth-child(even){background:#eeeef6;}
-  .lpg-table tbody tr:hover{background:rgba(79,70,229,.06);box-shadow:inset 3px 0 0 #4f46e5;}
+  .lpg-table tbody tr:hover{background:rgba(46,158,63,.06);box-shadow:inset 3px 0 0 #2e9e3f;}
   .lpg-table tbody tr:last-child td{border-bottom:none;}
   /* Colour-coded columns (2026-08-03), same palette as pan_india.php/index.php -
      column 1 ("#") stays plain, columns 2-10 each get their own header colour
@@ -79,7 +79,7 @@ require __DIR__ . '/includes/header.php';
     background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.35);padding:1px 7px;border-radius:5px;
     letter-spacing:.2px;display:inline-block;color:#0d9668;font-weight:700;}
   .lpg-cell-dob{font-family:'Consolas','Cascadia Code','Courier New',monospace;font-size:12px;color:#fff;
-    font-weight:700;letter-spacing:.2px;background:#4f46e5;padding:1px 7px;border-radius:5px;display:inline-block;}
+    font-weight:700;letter-spacing:.2px;background:#2e9e3f;padding:1px 7px;border-radius:5px;display:inline-block;}
   .lpg-cell-empty{color:#aaa;}
   .lpg-error-row td{color:#f87171;}
   .lpg-error-row .lpg-cell-name::before{content:"Not found";font-weight:700;}
@@ -90,11 +90,11 @@ require __DIR__ . '/includes/header.php';
     border:1px solid #e2e2ea;background:#fff;font-size:12.5px;font-weight:600;color:#555;
     cursor:pointer;transition:all 150ms;white-space:nowrap;}
   .lpg-tab i{font-size:14px;}
-  .lpg-tab:hover{border-color:#4f46e5;color:#4f46e5;}
-  .lpg-tab.active{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 4px 14px rgba(79,70,229,.35);}
+  .lpg-tab:hover{border-color:#2e9e3f;color:#2e9e3f;}
+  .lpg-tab.active{background:#2e9e3f;border-color:#2e9e3f;color:#fff;box-shadow:0 4px 14px rgba(46,158,63,.35);}
   .lpg-textarea{width:100%;height:110px;padding:9px 14px;font-size:13px;color:#333;
     border:1px solid #e0e0e0;border-radius:9px;background:#fff;resize:vertical;outline:none;}
-  .lpg-textarea:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25);}
+  .lpg-textarea:focus{border-color:#2e9e3f;box-shadow:0 0 0 3px rgba(46,158,63,.25);}
 </style>
 
 <div class="lpg-tabs">

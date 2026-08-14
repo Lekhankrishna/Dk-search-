@@ -45,24 +45,24 @@ require __DIR__ . '/includes/header.php';
   .hp-card{background:var(--c-surface,#fff);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
   .hp-card-body{padding:16px 18px;}
   .hp-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
-  .hp-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
+  .hp-btn{padding:11px 26px;border-radius:9px;border:none;background:#2e9e3f;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
-    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);}
-  .hp-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+    transition:all 150ms;box-shadow:0 4px 18px rgba(46,158,63,.3);}
+  .hp-btn:hover:not(:disabled){background:#257e32;transform:translateY(-1px);box-shadow:0 6px 20px rgba(46,158,63,.45);}
   .hp-btn:disabled{opacity:.65;cursor:wait;transform:none;}
   .hp-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
-  .hp-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .hp-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#2e9e3f;transform:none;box-shadow:none;}
   #hpStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .hp-progress-wrap{margin-top:12px;display:none;}
   .hp-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
-  .hp-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:100%;
-    background-image:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+  .hp-progress-fill{height:100%;border-radius:6px;background:#2e9e3f;width:100%;
+    background-image:repeating-linear-gradient(45deg,#2e9e3f 0 12px,#257e32 12px 24px);
     background-size:34px 100%;animation:hp-progress-stripes 1s linear infinite;}
   @keyframes hp-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .hp-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
   .hp-result-wrap{margin-top:16px;display:none;}
   .hp-section{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
-  .hp-section-title{padding:10px 16px;background:#4f46e5;color:#fff;font-size:11.5px;font-weight:700;
+  .hp-section-title{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
     text-transform:uppercase;letter-spacing:.4px;}
   .hp-section-table{width:100%;border-collapse:collapse;}
   .hp-section-table tr:nth-child(odd){background:#fff;}
@@ -80,14 +80,14 @@ require __DIR__ . '/includes/header.php';
     border:1px solid #e2e2ea;background:#fff;font-size:12.5px;font-weight:600;color:#555;
     cursor:pointer;transition:all 150ms;white-space:nowrap;}
   .hp-tab i{font-size:14px;}
-  .hp-tab:hover{border-color:#4f46e5;color:#4f46e5;}
-  .hp-tab.active{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 4px 14px rgba(79,70,229,.35);}
+  .hp-tab:hover{border-color:#2e9e3f;color:#2e9e3f;}
+  .hp-tab.active{background:#2e9e3f;border-color:#2e9e3f;color:#fff;box-shadow:0 4px 14px rgba(46,158,63,.35);}
   .hp-textarea{width:100%;height:110px;padding:9px 14px;font-size:13px;color:#333;
     border:1px solid #e0e0e0;border-radius:9px;background:#fff;resize:vertical;outline:none;}
-  .hp-textarea:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.25);}
+  .hp-textarea:focus{border-color:#2e9e3f;box-shadow:0 0 0 3px rgba(46,158,63,.25);}
   /* Overrides the single-search bar's always-indeterminate stripes with a
      real done/total percentage, same as lpg_bulk_search.php's .lpg-progress-fill. */
-  .hp-progress-fill.determinate{background-image:none;animation:none;background:#4f46e5;
+  .hp-progress-fill.determinate{background-image:none;animation:none;background:#2e9e3f;
     width:0%;transition:width .3s ease;}
   .hp-bulk-item{margin-bottom:16px;}
   .hp-bulk-item-header{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#eeeef6;

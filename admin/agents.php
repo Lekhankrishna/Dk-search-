@@ -261,7 +261,7 @@ require __DIR__ . '/../includes/header.php';
     transition:border-color 150ms,background 150ms,box-shadow 150ms,transform 150ms;}
   .acf-feature:hover{border-color:var(--c-accent);transform:translateY(-1px);}
   .acf-feature:has(input:checked){background:var(--c-accent-light);border-color:var(--c-accent);
-    box-shadow:0 2px 10px rgba(79,70,229,.2);color:var(--c-accent-hover);}
+    box-shadow:0 2px 10px rgba(46,158,63,.2);color:var(--c-accent-hover);}
   .acf-feature input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--c-accent);cursor:pointer;}
   .acf-feature span{flex:1;}
   .acf-feature .acf-limit{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:11px;font-weight:500;color:var(--c-text-soft);}

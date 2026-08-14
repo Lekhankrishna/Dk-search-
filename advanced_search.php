@@ -61,35 +61,35 @@ require __DIR__ . '/includes/header.php';
     border:1px solid #e2e2ea;background:#fff;font-size:12.5px;font-weight:600;color:#555;
     cursor:pointer;transition:all 150ms;white-space:nowrap;}
   .as-tab i{font-size:14px;}
-  .as-tab:hover{border-color:#4f46e5;color:#4f46e5;}
-  .as-tab.active{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:0 4px 14px rgba(79,70,229,.35);}
+  .as-tab:hover{border-color:#2e9e3f;color:#2e9e3f;}
+  .as-tab.active{background:#2e9e3f;border-color:#2e9e3f;color:#fff;box-shadow:0 4px 14px rgba(46,158,63,.35);}
   .as-search-row{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;}
   .as-input-group{display:none;flex:1 1 320px;gap:10px;min-width:0;}
   .as-input-group.active{display:flex;}
   .as-input-group input{flex:1;min-width:0;padding:13px 16px;font-size:14px;color:#333;
     border:1px solid #e0e0e0;border-radius:10px;background:#fff;outline:none;transition:border-color 150ms;}
-  .as-input-group input:focus{border-color:#4f46e5;}
-  .as-btn{padding:0 26px;border-radius:10px;border:none;background:#4f46e5;color:#fff;
+  .as-input-group input:focus{border-color:#2e9e3f;}
+  .as-btn{padding:0 26px;border-radius:10px;border:none;background:#2e9e3f;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
-    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);display:inline-flex;align-items:center;gap:8px;
+    transition:all 150ms;box-shadow:0 4px 18px rgba(46,158,63,.3);display:inline-flex;align-items:center;gap:8px;
     white-space:nowrap;flex-shrink:0;}
-  .as-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+  .as-btn:hover:not(:disabled){background:#257e32;transform:translateY(-1px);box-shadow:0 6px 20px rgba(46,158,63,.45);}
   .as-btn:disabled{opacity:.65;cursor:wait;transform:none;}
   .as-row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;}
   .as-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;padding:9px 18px;}
-  .as-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .as-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#2e9e3f;transform:none;box-shadow:none;}
   .as-btn-excel{background:#10b981;color:#fff;box-shadow:0 4px 18px rgba(16,185,129,.3);padding:9px 18px;}
   .as-btn-excel:hover:not(:disabled){background:#0d9668;transform:translateY(-1px);box-shadow:0 6px 20px rgba(16,185,129,.45);}
   #asStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .as-progress-wrap{margin-top:12px;display:none;}
   .as-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
-  .as-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:100%;
-    background-image:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+  .as-progress-fill{height:100%;border-radius:6px;background:#2e9e3f;width:100%;
+    background-image:repeating-linear-gradient(45deg,#2e9e3f 0 12px,#257e32 12px 24px);
     background-size:34px 100%;animation:as-progress-stripes 1s linear infinite;}
   @keyframes as-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .as-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
   .as-result-wrap{margin-top:16px;display:none;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow-x:auto;}
-  .as-table-toolbar{padding:10px 16px;background:#4f46e5;color:#fff;font-size:11.5px;font-weight:700;
+  .as-table-toolbar{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
     text-transform:uppercase;letter-spacing:.3px;}
   .as-table{width:100%;border-collapse:collapse;font-size:11.5px;}
   .as-table th{background:#eeeef6;color:#555;font-size:10px;font-weight:700;text-transform:uppercase;

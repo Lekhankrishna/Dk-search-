@@ -50,18 +50,18 @@ require __DIR__ . '/includes/header.php';
   .rc-card{background:var(--c-surface,#fff);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
   .rc-card-body{padding:16px 18px;}
   .rc-row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap;}
-  .rc-btn{padding:11px 26px;border-radius:9px;border:none;background:#4f46e5;color:#fff;
+  .rc-btn{padding:11px 26px;border-radius:9px;border:none;background:#2e9e3f;color:#fff;
     font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;
-    transition:all 150ms;box-shadow:0 4px 18px rgba(79,70,229,.3);}
-  .rc-btn:hover:not(:disabled){background:#4338ca;transform:translateY(-1px);box-shadow:0 6px 20px rgba(79,70,229,.45);}
+    transition:all 150ms;box-shadow:0 4px 18px rgba(46,158,63,.3);}
+  .rc-btn:hover:not(:disabled){background:#257e32;transform:translateY(-1px);box-shadow:0 6px 20px rgba(46,158,63,.45);}
   .rc-btn:disabled{opacity:.65;cursor:wait;transform:none;}
   .rc-btn-secondary{background:#fff;color:#333;border:1px solid #e0e0e0;box-shadow:none;}
-  .rc-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#4f46e5;transform:none;box-shadow:none;}
+  .rc-btn-secondary:hover:not(:disabled){background:#eeeef6;border-color:#2e9e3f;transform:none;box-shadow:none;}
   #rcStatus{font-size:12.5px;color:#555;white-space:pre-wrap;word-break:break-word;font-weight:500;}
   .rc-progress-wrap{margin-top:12px;display:none;}
   .rc-progress-track{height:8px;border-radius:6px;background:#eeeef6;overflow:hidden;border:1px solid #e0e0e0;}
-  .rc-progress-fill{height:100%;border-radius:6px;background:#4f46e5;width:100%;
-    background-image:repeating-linear-gradient(45deg,#4f46e5 0 12px,#4338ca 12px 24px);
+  .rc-progress-fill{height:100%;border-radius:6px;background:#2e9e3f;width:100%;
+    background-image:repeating-linear-gradient(45deg,#2e9e3f 0 12px,#257e32 12px 24px);
     background-size:34px 100%;animation:rc-progress-stripes 1s linear infinite;}
   @keyframes rc-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .rc-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
