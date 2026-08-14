@@ -63,10 +63,13 @@
 (function(){
   // The Dark Mode toggle button is gone (removed 2026-08-11, per explicit
   // instruction), but this still applies whatever theme was already saved
-  // to localStorage - from before the button existed, or the 'dark' default
-  // - so the choice a user already made keeps rendering correctly rather
-  // than silently reverting everyone to 'dark'.
-  document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');
+  // to localStorage - so a user who toggled to dark before the button was
+  // removed keeps seeing it. Falls back to 'light' (not 'dark') for
+  // everyone else (2026-08-14) - html[data-theme="dark"] only just grew
+  // real colors of its own (assets/style.css), and with no toggle left in
+  // the UI to reach it, defaulting new/no-preference visitors into it would
+  // have silently changed the whole site's look with no way back.
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'light');
 })();
 </script>
 <!-- Loaded on every page so any search page can call startConfetti()/

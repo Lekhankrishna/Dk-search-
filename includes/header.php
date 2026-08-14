@@ -110,7 +110,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');</script>
+  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'light');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CRM Portal — Data Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -84,6 +84,61 @@ html[data-theme="light"] .login-box{
   box-shadow:0 32px 64px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);
 }
 
+/* ── Dark theme override (toggled via html[data-theme="dark"]) ──────────────
+   Not the default - :root above already holds the site's normal look, and
+   the localStorage fallback in includes/footer.php/login.php's inline
+   theme-init script defaults to 'light' rather than 'dark' (2026-08-14),
+   specifically so this doesn't silently become every visitor's default the
+   moment it grows real colors. There's currently no in-UI control that
+   reaches this state (the toggle button was removed per explicit
+   instruction) - it's here for whoever already has 'dark' saved from
+   before, or a future toggle. Same green accent as light (--c-accent
+   isn't redefined here) for brand consistency across both. */
+html[data-theme="dark"] {
+  --c-bg:         #0a0f1a;
+  --c-surface:    #131b2b;
+  --c-surface-2:  #1b2436;
+  --c-border:     #263047;
+  --c-sidebar-bg: #0f1626;
+
+  --c-text:      #e8eaed;
+  --c-text-muted:#a0a8b8;
+  --c-text-soft: #6b7486;
+
+  --c-accent-light: rgba(46,158,63,.16);
+
+  --shadow-xs:  0 1px 2px rgba(0,0,0,.25);
+  --shadow-sm:  0 2px 8px rgba(0,0,0,.35);
+  --shadow-md:  0 4px 6px -1px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.25);
+  --shadow-lg:  0 10px 25px -5px rgba(0,0,0,.45),0 8px 10px -6px rgba(0,0,0,.3);
+  --shadow-xl:  0 20px 40px -10px rgba(0,0,0,.55);
+  --shadow-accent: 0 4px 18px rgba(46,158,63,.35);
+
+  color-scheme: dark;
+}
+html[data-theme="dark"] *{scrollbar-color:#3a4459 #141b2a;}
+html[data-theme="dark"] ::-webkit-scrollbar-track{background:#141b2a;}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#3a4459;}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#4a5570;}
+html[data-theme="dark"] code{color:#a0a8b8;}
+html[data-theme="dark"] .na{color:#6b7486;}
+html[data-theme="dark"] .pg-btn.pg-disabled,
+html[data-theme="dark"] .pg-btn[disabled]{color:#4a5570;}
+html[data-theme="dark"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+html[data-theme="dark"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{color:#4a5570!important;}
+html[data-theme="dark"] body.login-page{
+  background:linear-gradient(160deg,#0a0f1a 0%,#131b2b 100%);
+}
+html[data-theme="dark"] body.login-page::before{
+  background-image:
+    radial-gradient(circle at 20% 20%,rgba(255,255,255,.03) 0%,transparent 50%),
+    radial-gradient(circle at 80% 80%,rgba(46,158,63,.14) 0%,transparent 50%);
+}
+html[data-theme="dark"] .login-box{
+  background:rgba(19,27,43,.97);
+  box-shadow:0 32px 64px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.06);
+}
+
 /* ── Theme toggle control ─────────────────────────────────────────────────── */
 button.sidebar__item{
   width:100%;background:none;border:none;border-left:3px solid transparent;
