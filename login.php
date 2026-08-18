@@ -83,7 +83,7 @@ if ($error === '' && ($_GET['reason'] ?? '') === 'session_replaced') {
     <div class="login-box">
 
       <div class="login-logo">
-        <img src="assets/img/dk-search-logo.jpeg" alt="DK Search" class="login-logo__image">
+        <img src="assets/img/dk-search-mark.png" alt="DK Search" class="login-logo__mark">
         <p class="login-logo__sub">Secure sign-in to your account</p>
       </div>
 
