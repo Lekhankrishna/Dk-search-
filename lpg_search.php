@@ -552,7 +552,7 @@ if (indaneBtn) {
   // insensitively against whatever label text the generic scraper picked
   // up, not a fixed key.
   const INDANE_VISIBLE_FIELDS = [
-    "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact",
+    "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact", "agency address",
   ];
 
   // The backend returns one "master" record holding every field for the

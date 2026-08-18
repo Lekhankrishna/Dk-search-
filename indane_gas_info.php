@@ -256,7 +256,7 @@ function updateQuotaBadge(used, limit, unit) {
 // insensitively against whatever label text the generic scraper picked up,
 // not a fixed key, since tracing2_tools.py doesn't normalize label casing.
 const IG_VISIBLE_FIELDS = [
-  "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact",
+  "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact", "agency address",
 ];
 
 // The backend returns one "master" record holding every field for the
