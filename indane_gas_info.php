@@ -65,19 +65,21 @@ require __DIR__ . '/includes/header.php';
   @keyframes ig-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .ig-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
 
-  /* Result cards - identical shape/classes to tracing2.php's own .t2-*
-     rules so a record looks the same wherever it's shown in this app. */
-  .t2-record{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
-  .t2-record-header{padding:12px 16px;background:#2e9e3f;color:#fff;display:flex;align-items:center;gap:10px;}
-  .t2-record-header i{font-size:16px;}
-  .t2-record-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
-  .t2-record-status{margin-left:auto;font-size:10.5px;padding:2px 10px;border-radius:999px;
-    font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:rgba(255,255,255,.2);}
-  .t2-field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:16px;}
-  .t2-field-item{display:flex;align-items:flex-start;gap:10px;}
-  .t2-field-item i{font-size:15px;color:#2e9e3f;margin-top:2px;flex-shrink:0;}
-  .t2-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#999;margin-bottom:2px;}
-  .t2-field-value{font-size:13px;font-weight:600;color:#222;word-break:break-word;}
+  /* Result table - same shape as hp_gas.php's .hp-section/.hp-section-table
+     (colored title bar + plain label:value rows) rather than tracing2.php's
+     icon-grid cards, per explicit instruction ("colour and tables theme
+     like other app"). One consumer per search here, same as HP Gas/RC
+     Print, so a single stacked table reads better than a multi-column grid. */
+  .ig-section{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
+  .ig-section-title{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.4px;}
+  .ig-section-table{width:100%;border-collapse:collapse;}
+  .ig-section-table tr:nth-child(odd){background:#fff;}
+  .ig-section-table tr:nth-child(even){background:#f8f8fc;}
+  .ig-section-table td{padding:8px 16px;font-size:12.5px;border-bottom:1px solid #eee;vertical-align:top;}
+  .ig-section-table tr:last-child td{border-bottom:none;}
+  .ig-field-label{width:38%;color:#777;font-weight:600;}
+  .ig-field-value{color:#222;font-weight:500;word-break:break-word;}
   .ig-result-wrap{margin-top:16px;display:none;}
   .ig-result-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
   .ig-result-count{font-size:12px;color:#777;font-weight:600;}
@@ -248,74 +250,63 @@ function updateQuotaBadge(used, limit, unit) {
   quotaBadge.classList.toggle("badge-neutral", used < limit);
 }
 
-// Best-guess icon per field label - same heuristic as tracing2.php's
-// fieldIcon(), kept in sync there since both render the same record shape.
-function fieldIcon(label) {
-  const l = label.toLowerCase();
-  if (/(phone|mobile|node|number)/.test(l)) return "bi-telephone-fill";
-  if (/(address|location|city|state|pincode|circle)/.test(l)) return "bi-geo-alt-fill";
-  if (/name/.test(l)) return "bi-person-fill";
-  if (/(bank|account|ifsc)/.test(l)) return "bi-bank";
-  if (/(email|mail)/.test(l)) return "bi-envelope-fill";
-  if (/(aadhaar|pan|id|linkage|imei)/.test(l)) return "bi-credit-card-2-front-fill";
-  if (/(valid|verif|status|merchant)/.test(l)) return "bi-shield-check";
-  if (/(vpa|upi|credit)/.test(l)) return "bi-wallet2";
-  return "bi-info-circle-fill";
-}
+// Only these fields are shown, in this order, per explicit instruction -
+// everything else locateme.services returns for this tool (eKYC details,
+// bank linkage, geo-intelligence, etc.) is hidden. Matched case-
+// insensitively against whatever label text the generic scraper picked up,
+// not a fixed key, since tracing2_tools.py doesn't normalize label casing.
+const IG_VISIBLE_FIELDS = [
+  "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact",
+];
 
-function buildRecordCard(record) {
+// The backend returns one "master" record holding every field for the
+// consumer, plus several more records that just re-group a SUBSET of that
+// same master's fields under section names (Consumer Details, Distributor
+// Intelligence, ...) - not separate people (confirmed live 2026-08-19:
+// searching one number returned 5 records, all for the same consumer).
+// Rendering each of those separately would repeat the same 2-3 fields
+// across multiple cards and leave the section-only records that happen to
+// have none of the 6 whitelisted fields as empty boxes. Merging every
+// record's fields into one map first (first-seen label wins) and building
+// ONE card from that avoids both problems. Returns null if nothing in the
+// whitelist was present at all, so the caller can treat that as not found.
+function buildConsolidatedCard(records) {
+  const fieldsByLabel = new Map();
+  records.forEach(r => (r.fields || []).forEach(f => {
+    const key = f.label.trim().toLowerCase();
+    if (!fieldsByLabel.has(key)) fieldsByLabel.set(key, f);
+  }));
+
   const box = document.createElement("div");
-  box.className = "t2-record";
+  box.className = "ig-section";
 
-  const header = document.createElement("div");
-  header.className = "t2-record-header";
-  const headerIcon = record.status ? "bi-person-circle" : "bi-folder2-open";
-  header.innerHTML = `<i class="bi ${headerIcon}"></i><span class="t2-record-name"></span><span class="t2-record-status"></span>`;
-  header.querySelector(".t2-record-name").textContent = record.name || "Record";
-  const statusBadge = header.querySelector(".t2-record-status");
-  if (record.status) { statusBadge.textContent = record.status; } else { statusBadge.remove(); }
-  box.appendChild(header);
+  const title = document.createElement("div");
+  title.className = "ig-section-title";
+  title.textContent = (records.find(r => r.name)?.name) || "Result";
+  box.appendChild(title);
 
-  const grid = document.createElement("div");
-  grid.className = "t2-field-grid";
-  (record.fields || []).forEach(field => {
-    const item = document.createElement("div");
-    item.className = "t2-field-item";
-    item.innerHTML = `<i class="bi"></i><div><div class="t2-field-label"></div><div class="t2-field-value"></div></div>`;
-    item.querySelector("i").classList.add(fieldIcon(field.label));
-    item.querySelector(".t2-field-label").textContent = field.label;
-    item.querySelector(".t2-field-value").textContent = field.value || "—";
-    grid.appendChild(item);
+  const table = document.createElement("table");
+  table.className = "ig-section-table";
+  const tbody = document.createElement("tbody");
+  let matched = 0;
+  IG_VISIBLE_FIELDS.forEach(key => {
+    const field = fieldsByLabel.get(key);
+    if (!field) return;
+    matched++;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="ig-field-label"></td><td class="ig-field-value"></td>`;
+    tr.querySelector(".ig-field-label").textContent = field.label;
+    tr.querySelector(".ig-field-value").textContent = field.value || "—";
+    tbody.appendChild(tr);
   });
-  box.appendChild(grid);
+  if (matched === 0) return null;
+  table.appendChild(tbody);
+  box.appendChild(table);
   return box;
 }
 
 let lastRecords = [];
 const exportBtn = document.getElementById("igExportBtn");
-
-// Records carrying a shared "section" (e.g. a table-sourced result like
-// Aadhaar to Ration's "Family Member Profile" - see tracing2_tools.py's
-// _extract_tables()) get grouped under one heading instead of repeating it
-// above every card; bulk search (below) reuses this by tagging every
-// record with its own searched number as the section, same rendering path.
-function appendRecords(records) {
-  let lastSection = null;
-  records.forEach(r => {
-    if (r.section) {
-      if (r.section !== lastSection) {
-        const heading = document.createElement("div");
-        heading.className = "t2-group-heading";
-        heading.textContent = r.section;
-        recordsWrap.appendChild(heading);
-        lastSection = r.section;
-      }
-    } else {
-      lastSection = null;
-    }
-    recordsWrap.appendChild(buildRecordCard(r));
-  });
-}
 
 function renderResult(data) {
   recordsWrap.innerHTML = "";
@@ -324,11 +315,12 @@ function renderResult(data) {
   lastRecords = [];
 
   const records = (data.found && Array.isArray(data.records)) ? data.records : [];
+  const card = records.length ? buildConsolidatedCard(records) : null;
 
-  if (records.length) {
-    lastRecords = records;
-    resultCountText.textContent = `${records.length} result${records.length === 1 ? "" : "s"} found`;
-    appendRecords(records);
+  if (card) {
+    lastRecords = [records[0]];
+    resultCountText.textContent = "1 result found";
+    recordsWrap.appendChild(card);
     resultWrap.style.display = "block";
     exportBtn.disabled = false;
     startConfetti();
@@ -343,28 +335,23 @@ function renderResult(data) {
   }
 }
 
-// Columns are fully dynamic (whatever fields locateme.services showed for
-// each record - see buildRecordCard), built as the union of every label
-// seen in first-seen order, same approach as tracing2.php's own export.
+// Same IG_VISIBLE_FIELDS whitelist/order as buildConsolidatedCard(), so the
+// export matches what's actually shown on screen instead of dumping every
+// field locateme.services returned.
 exportBtn.addEventListener("click", () => {
   if (!lastRecords.length) return;
   const hasSection = lastRecords.some(r => r.section);
-  const hasName    = lastRecords.some(r => r.name);
-  const hasStatus  = lastRecords.some(r => r.status);
-  const columns = [];
-  if (hasSection) columns.push("Number");
-  if (hasName) columns.push("Record");
-  if (hasStatus) columns.push("Status");
-  const columnSet = new Set(columns);
-  lastRecords.forEach(r => (r.fields || []).forEach(f => {
-    if (!columnSet.has(f.label)) { columnSet.add(f.label); columns.push(f.label); }
-  }));
+  const columns = hasSection ? ["Number"] : [];
+  const presentFields = IG_VISIBLE_FIELDS.filter(key =>
+    lastRecords.some(r => (r.fields || []).some(f => f.label.trim().toLowerCase() === key))
+  );
+  const labelByKey = new Map();
+  lastRecords.forEach(r => (r.fields || []).forEach(f => labelByKey.set(f.label.trim().toLowerCase(), f.label)));
+  presentFields.forEach(key => columns.push(labelByKey.get(key)));
 
   const aoa = [columns, ...lastRecords.map(r => {
     const valueMap = {};
     if (hasSection) valueMap["Number"] = r.section || "";
-    if (hasName) valueMap["Record"] = r.name || "";
-    if (hasStatus) valueMap["Status"] = r.status || "";
     (r.fields || []).forEach(f => { valueMap[f.label] = f.value || ""; });
     return columns.map(c => valueMap[c] || "");
   })];
@@ -531,20 +518,20 @@ if (tabSingle) {
         }
 
         const records = (res.ok && data.found && Array.isArray(data.records)) ? data.records : [];
+        const card = records.length ? buildConsolidatedCard(records) : null;
         const heading = document.createElement("div");
         heading.className = "t2-group-heading";
         heading.textContent = number;
         recordsWrap.appendChild(heading);
 
-        if (records.length) {
-          // Heading already added above (the number itself), so cards go
-          // straight in via buildRecordCard() rather than appendRecords()
-          // (which would print its own heading from each record's own
-          // .section, if it had one - indane-gas-info doesn't return
-          // table-sourced multi-section results in practice). The export
-          // copy still gets section = number so the "Number" column works.
-          records.forEach(r => recordsWrap.appendChild(buildRecordCard(r)));
-          lastRecords = lastRecords.concat(records.map(r => ({ ...r, section: number })));
+        if (card) {
+          // Heading already added above (the number itself). The export
+          // copy carries section = number so the "Number" column works;
+          // just the master record (index 0) is kept per number, same as
+          // renderResult() - buildConsolidatedCard() already merged
+          // whatever fields it needed out of the rest.
+          recordsWrap.appendChild(card);
+          lastRecords.push({ ...records[0], section: number });
           foundAny = true;
         } else {
           const empty = document.createElement("div");

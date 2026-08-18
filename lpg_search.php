@@ -109,22 +109,21 @@ require __DIR__ . '/includes/header.php';
   .lpg-indane-quota{font-size:11px;color:#999;padding:2px 16px 0;}
   .lpg-indane-records{padding:4px 16px 16px;}
 
-  /* Record card styling, copied from tracing2.php's own .t2-* rules so a
-     record renders identically here as it does on that page. */
-  .t2-group-heading{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
-    color:#2e9e3f;margin:20px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e2ea;}
-  .t2-group-heading:first-child{margin-top:0;}
-  .t2-record{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;border:1px solid #eee;}
-  .t2-record-header{padding:12px 16px;background:#2e9e3f;color:#fff;display:flex;align-items:center;gap:10px;}
-  .t2-record-header i{font-size:16px;}
-  .t2-record-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
-  .t2-record-status{margin-left:auto;font-size:10.5px;padding:2px 10px;border-radius:999px;
-    font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:rgba(255,255,255,.2);}
-  .t2-field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:16px;}
-  .t2-field-item{display:flex;align-items:flex-start;gap:10px;}
-  .t2-field-item i{font-size:15px;color:#2e9e3f;margin-top:2px;flex-shrink:0;}
-  .t2-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#999;margin-bottom:2px;}
-  .t2-field-value{font-size:13px;font-weight:600;color:#222;word-break:break-word;}
+  /* Result table - same shape as hp_gas.php's .hp-section/.hp-section-table
+     and indane_gas_info.php's own .ig-section (colored title bar + plain
+     label:value rows), per the same explicit instruction applied there
+     ("colour and tables theme like other app") - this panel shows the same
+     Indane Gas Info data, just embedded here instead of on its own page. */
+  .ig-section{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
+  .ig-section-title{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.4px;}
+  .ig-section-table{width:100%;border-collapse:collapse;}
+  .ig-section-table tr:nth-child(odd){background:#fff;}
+  .ig-section-table tr:nth-child(even){background:#f8f8fc;}
+  .ig-section-table td{padding:8px 16px;font-size:12.5px;border-bottom:1px solid #eee;vertical-align:top;}
+  .ig-section-table tr:last-child td{border-bottom:none;}
+  .ig-field-label{width:38%;color:#777;font-weight:600;}
+  .ig-field-value{color:#222;font-weight:500;word-break:break-word;}
 </style>
 
 <div class="lpg-tabs">
@@ -547,47 +546,57 @@ if (indaneBtn) {
   // own SERVER_DOWN_MESSAGE comment.
   const INDANE_SERVER_DOWN_MESSAGE = "Server is down. Please try again later.";
 
-  // Best-guess icon per field label, copied from tracing2.php's fieldIcon().
-  function indaneFieldIcon(label) {
-    const l = label.toLowerCase();
-    if (/(phone|mobile|node|number)/.test(l)) return "bi-telephone-fill";
-    if (/(address|location|city|state|pincode|circle)/.test(l)) return "bi-geo-alt-fill";
-    if (/name/.test(l)) return "bi-person-fill";
-    if (/(bank|account|ifsc)/.test(l)) return "bi-bank";
-    if (/(email|mail)/.test(l)) return "bi-envelope-fill";
-    if (/(aadhaar|pan|id|linkage|imei)/.test(l)) return "bi-credit-card-2-front-fill";
-    if (/(valid|verif|status|merchant)/.test(l)) return "bi-shield-check";
-    if (/(vpa|upi|credit)/.test(l)) return "bi-wallet2";
-    return "bi-info-circle-fill";
-  }
+  // Only these fields are shown, in this order, per explicit instruction -
+  // same whitelist as indane_gas_info.php's IG_VISIBLE_FIELDS, kept in sync
+  // since both render the same backend tool's data. Matched case-
+  // insensitively against whatever label text the generic scraper picked
+  // up, not a fixed key.
+  const INDANE_VISIBLE_FIELDS = [
+    "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact",
+  ];
 
-  // Same card shape as tracing2.php's buildRecordCard(), reusing its .t2-*
-  // classes so a record looks identical on both pages.
-  function buildIndaneRecordCard(record) {
+  // The backend returns one "master" record holding every field for the
+  // consumer, plus several more that just re-group a SUBSET of that same
+  // master's fields under section names (Consumer Details, Distributor
+  // Intelligence, ...) - not separate people. Merging every record's
+  // fields into one map first (first-seen label wins) and building ONE
+  // card from that avoids showing the same 2-3 fields repeated across
+  // several cards, and avoids empty boxes for the section-only records
+  // that happen to have none of the 6 whitelisted fields. Returns null if
+  // nothing in the whitelist was present at all - same shape/behavior as
+  // indane_gas_info.php's own buildConsolidatedCard(), kept in sync.
+  function buildIndaneConsolidatedCard(records) {
+    const fieldsByLabel = new Map();
+    records.forEach(r => (r.fields || []).forEach(f => {
+      const key = f.label.trim().toLowerCase();
+      if (!fieldsByLabel.has(key)) fieldsByLabel.set(key, f);
+    }));
+
     const box = document.createElement("div");
-    box.className = "t2-record";
+    box.className = "ig-section";
 
-    const header = document.createElement("div");
-    header.className = "t2-record-header";
-    const headerIcon = record.status ? "bi-person-circle" : "bi-folder2-open";
-    header.innerHTML = `<i class="bi ${headerIcon}"></i><span class="t2-record-name"></span><span class="t2-record-status"></span>`;
-    header.querySelector(".t2-record-name").textContent = record.name || "Record";
-    const statusBadge = header.querySelector(".t2-record-status");
-    if (record.status) { statusBadge.textContent = record.status; } else { statusBadge.remove(); }
-    box.appendChild(header);
+    const title = document.createElement("div");
+    title.className = "ig-section-title";
+    title.textContent = (records.find(r => r.name)?.name) || "Result";
+    box.appendChild(title);
 
-    const grid = document.createElement("div");
-    grid.className = "t2-field-grid";
-    (record.fields || []).forEach(field => {
-      const item = document.createElement("div");
-      item.className = "t2-field-item";
-      item.innerHTML = `<i class="bi"></i><div><div class="t2-field-label"></div><div class="t2-field-value"></div></div>`;
-      item.querySelector("i").classList.add(indaneFieldIcon(field.label));
-      item.querySelector(".t2-field-label").textContent = field.label;
-      item.querySelector(".t2-field-value").textContent = field.value || "—";
-      grid.appendChild(item);
+    const table = document.createElement("table");
+    table.className = "ig-section-table";
+    const tbody = document.createElement("tbody");
+    let matched = 0;
+    INDANE_VISIBLE_FIELDS.forEach(key => {
+      const field = fieldsByLabel.get(key);
+      if (!field) return;
+      matched++;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="ig-field-label"></td><td class="ig-field-value"></td>`;
+      tr.querySelector(".ig-field-label").textContent = field.label;
+      tr.querySelector(".ig-field-value").textContent = field.value || "—";
+      tbody.appendChild(tr);
     });
-    box.appendChild(grid);
+    if (matched === 0) return null;
+    table.appendChild(tbody);
+    box.appendChild(table);
     return box;
   }
 
@@ -624,9 +633,10 @@ if (indaneBtn) {
       }
 
       const records = (data.found && Array.isArray(data.records)) ? data.records : [];
-      if (records.length) {
-        indaneStatus.textContent = `${records.length} result${records.length === 1 ? "" : "s"} found`;
-        records.forEach(r => indaneRecords.appendChild(buildIndaneRecordCard(r)));
+      const card = records.length ? buildIndaneConsolidatedCard(records) : null;
+      if (card) {
+        indaneStatus.textContent = "1 result found";
+        indaneRecords.appendChild(card);
       } else {
         indaneStatus.textContent = "No result found";
       }
