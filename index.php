@@ -15,7 +15,7 @@ require __DIR__ . '/includes/header.php';
      anything underneath it. -->
 <div class="confetti-container" id="confetti-container"></div>
 
-<h1 class="page-title-main" id="page-title">CRM-PORTAL</h1>
+<h1 class="page-title-main" id="page-title">DK SEARCH</h1>
 
 <!-- ── Search Panel ── -->
 <div class="sp-wrap">
@@ -296,7 +296,7 @@ function renderPagination(info) {
 
 /* Page title reflects the selected state */
 function setPageTitle(state) {
-  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'CRM-PORTAL';
+  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'DK SEARCH';
 }
 setPageTitle(activeState);
 

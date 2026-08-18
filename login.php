@@ -71,7 +71,7 @@ if ($error === '' && ($_GET['reason'] ?? '') === 'session_replaced') {
   <meta charset="UTF-8">
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'light');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM Portal — Login</title>
+  <title>DK Search — Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -84,9 +84,9 @@ if ($error === '' && ($_GET['reason'] ?? '') === 'session_replaced') {
 
       <div class="login-logo">
         <div class="login-logo__icon">
-          <i class="bi bi-diagram-3-fill"></i>
+          <i class="bi bi-search"></i>
         </div>
-        <h1 class="login-logo__title">CRM Portal</h1>
+        <h1 class="login-logo__title">DK Search</h1>
         <p class="login-logo__sub">Secure sign-in to your account</p>
       </div>
 

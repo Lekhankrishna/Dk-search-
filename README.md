@@ -1,4 +1,4 @@
-# CRM Portal
+# DK Search
 
 Internal CRM/data-search portal used by agents to look up customer records across multiple states, e-commerce orders, and a range of third-party lookup tools (PAN India, Advance Pan India, Night Out, RC Print, HP LPG Search, Advanced Search, IndianOil LPG Search) — plus an admin panel for account management, per-agent feature access, and monthly usage caps on the tools that run against a shared vendor account.
 

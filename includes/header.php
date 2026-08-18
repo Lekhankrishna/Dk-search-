@@ -151,7 +151,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <meta charset="UTF-8">
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'light');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM Portal — Data Search</title>
+  <title>DK Search — Data Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -164,8 +164,8 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__top">
       <a class="sidebar__brand" href="<?= $bp ?>index.php">
-        <div class="sidebar__brand-icon"><i class="bi bi-diagram-3-fill"></i></div>
-        CRM Portal
+        <div class="sidebar__brand-icon"><i class="bi bi-search"></i></div>
+        DK Search
       </a>
       <button class="sidebar__hamburger" id="sidebar-toggle" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>
