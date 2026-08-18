@@ -45,19 +45,6 @@ if (hasTracing2Access()) {
     $tracing2Index = hasAdvancedSearchAccess() ? 1 : 0;
     array_splice($searchRegionsExtra, $tracing2Index, 0, [['label' => 'Tracing 2.0', 'href' => 'tracing2.php']]);
 }
-// RC Print's own standalone sidebar entry, restored per explicit
-// instruction (2026-08-19) alongside its RC Print tab inside Tracing 2.0
-// above - both routes stay available side by side rather than one
-// replacing the other. Same hasRcPrintAccess() flag gates both.
-if (hasRcPrintAccess()) {
-    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
-}
-// HP LPG Search's own standalone sidebar entry, restored per explicit
-// instruction (2026-08-19) alongside its HP Gas Advanced tab inside
-// Tracing 2.0 above - same hasHpGasAccess() flag gates both.
-if (hasHpGasAccess()) {
-    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
-}
 // Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
 // same as LPG Search below (2026-08-19 - previously unconditional for every
 // logged-in user; migrate_add_pan_india_access.sql defaults existing
@@ -114,6 +101,18 @@ if (false && hasLpgSearchAccess()) {
 // Print/HP LPG Search.
 if (hasIndaneGasAccess()) {
     $searchRegionsExtra[] = ['label' => 'Indane Gas', 'href' => 'indane_gas_info.php'];
+}
+// HP LPG Search's own standalone sidebar entry (moved below Indane Gas per
+// explicit instruction, 2026-08-19) - alongside its HP Gas Advanced tab
+// inside Tracing 2.0 above, same hasHpGasAccess() flag gates both.
+if (hasHpGasAccess()) {
+    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
+}
+// RC Print's own standalone sidebar entry (moved below HP LPG Search per
+// explicit instruction, 2026-08-19) - alongside its RC Print tab inside
+// Tracing 2.0 above, same hasRcPrintAccess() flag gates both.
+if (hasRcPrintAccess()) {
+    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
 }
 // Tata Play is opt-in per account (Admin > Agents > "Tata Play Access") -
 // same pattern as HP LPG Search above (own tataplay.py Selenium automation
