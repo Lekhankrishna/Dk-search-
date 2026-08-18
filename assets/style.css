@@ -195,13 +195,13 @@ code{
   display:flex;align-items:center;gap:10px;color:var(--c-text);
   text-decoration:none;font-weight:800;font-size:15px;letter-spacing:-.2px;
 }
-.sidebar__brand-icon{
-  width:30px;height:30px;flex-shrink:0;
-  background:var(--c-accent-light);
-  border:1px solid var(--c-border);border-radius:10px;
-  display:flex;align-items:center;justify-content:center;font-size:14px;
-  color:var(--c-accent);
-}
+/* DK Search logo (2026-08-19) - the image itself already contains the
+   wordmark, so this replaces the old icon-badge + separate text label
+   entirely rather than sitting next to one. Sized to height (not width) so
+   it stays a consistent, compact row height regardless of the sidebar's
+   fixed 212px width - the source image's own ~2:1 aspect ratio decides the
+   resulting width. */
+.sidebar__brand-logo{height:40px;width:auto;display:block;border-radius:8px;}
 .sidebar__hamburger{
   background:none;border:none;color:var(--c-text-muted);font-size:18px;
   cursor:pointer;padding:4px;line-height:1;border-radius:6px;transition:background var(--t),color var(--t);
@@ -981,14 +981,12 @@ body.login-page::before{
   animation:fadeUp .5s ease both;
 }
 .login-logo{text-align:center;margin-bottom:32px;}
-.login-logo__icon{
-  width:60px;height:60px;
-  background:linear-gradient(135deg,var(--c-accent-hover),var(--c-accent));
-  border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
-  font-size:26px;color:#ffffff;margin-bottom:14px;
-  box-shadow:0 10px 28px rgba(46,158,63,.4);
-}
-.login-logo__title{font-size:24px;font-weight:800;color:var(--c-text);margin:0 0 5px;letter-spacing:-.3px;}
+/* DK Search logo (2026-08-19) - replaces the old gradient icon-badge +
+   separate <h1> title; the image already carries the wordmark. .login-wrap
+   caps out at max-width:420px (40px padding each side on .login-box), so
+   260px leaves a comfortable margin without needing a media query. */
+.login-logo__image{max-width:260px;width:100%;height:auto;border-radius:14px;margin-bottom:14px;
+  box-shadow:0 10px 28px rgba(46,158,63,.25);}
 .login-logo__sub{margin:0;color:var(--c-text-muted);font-size:13px;}
 .login-box .form-group{margin-bottom:16px;}
 .login-box .form-label{

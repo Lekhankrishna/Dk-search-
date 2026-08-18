@@ -164,8 +164,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__top">
       <a class="sidebar__brand" href="<?= $bp ?>index.php">
-        <div class="sidebar__brand-icon"><i class="bi bi-search"></i></div>
-        DK Search
+        <img src="<?= $bp ?>assets/img/dk-search-logo.jpeg" alt="DK Search" class="sidebar__brand-logo">
       </a>
       <button class="sidebar__hamburger" id="sidebar-toggle" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>
