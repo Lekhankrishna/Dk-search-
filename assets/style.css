@@ -195,13 +195,11 @@ code{
   display:flex;align-items:center;gap:10px;color:var(--c-text);
   text-decoration:none;font-weight:800;font-size:15px;letter-spacing:-.2px;
 }
-/* DK Search logo (2026-08-19) - the image itself already contains the
-   wordmark, so this replaces the old icon-badge + separate text label
-   entirely rather than sitting next to one. Sized to height (not width) so
-   it stays a consistent, compact row height regardless of the sidebar's
-   fixed 212px width - the source image's own ~2:1 aspect ratio decides the
-   resulting width. */
-.sidebar__brand-logo{height:40px;width:auto;display:block;border-radius:8px;}
+/* DK Search circular mark (2026-08-19) - swapped from the wide banner
+   image to the same round mark used on the login page, for consistent
+   branding. Round source image, so border-radius:50% (not the banner's
+   8px) keeps it a clean circle instead of clipping corners off it. */
+.sidebar__brand-logo{height:38px;width:38px;display:block;border-radius:50%;}
 .sidebar__hamburger{
   background:none;border:none;color:var(--c-text-muted);font-size:18px;
   cursor:pointer;padding:4px;line-height:1;border-radius:6px;transition:background var(--t),color var(--t);
