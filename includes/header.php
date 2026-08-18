@@ -75,7 +75,7 @@ if (hasPanIndiaProAccess()) {
 // The pages/APIs enforce the same check server-side (403) regardless, so
 // this is purely about not showing a link the user can't use, not the
 // actual access control. Labelled "Indian LPG Search" (not just "LPG
-// Search") now that HP LPG Search also exists, so the two aren't ambiguous
+// Search") now that HP Gas Search also exists, so the two aren't ambiguous
 // in the sidebar.
 if (false && hasLpgSearchAccess()) {
     // Single Search and Bulk Search used to be two separate pages/sidebar
@@ -98,24 +98,24 @@ if (false && hasLpgSearchAccess()) {
 // flag + count-based monthly quota (indane_gas_access, promoted out of the
 // generic Tracing 2.0 per-tool checklist 2026-08-18 - see
 // includes/tracing2_tools.php's own comment on why), same pattern as RC
-// Print/HP LPG Search.
+// Print/HP Gas Search.
 if (hasIndaneGasAccess()) {
     $searchRegionsExtra[] = ['label' => 'Indane Gas', 'href' => 'indane_gas_info.php'];
 }
-// HP LPG Search's own standalone sidebar entry (moved below Indane Gas per
+// HP Gas Search's own standalone sidebar entry (moved below Indane Gas per
 // explicit instruction, 2026-08-19) - alongside its HP Gas Advanced tab
 // inside Tracing 2.0 above, same hasHpGasAccess() flag gates both.
 if (hasHpGasAccess()) {
-    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
+    $searchRegionsExtra[] = ['label' => 'HP Gas Search', 'href' => 'hp_gas.php'];
 }
-// RC Print's own standalone sidebar entry (moved below HP LPG Search per
+// RC Print's own standalone sidebar entry (moved below HP Gas Search per
 // explicit instruction, 2026-08-19) - alongside its RC Print tab inside
 // Tracing 2.0 above, same hasRcPrintAccess() flag gates both.
 if (hasRcPrintAccess()) {
     $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
 }
 // Tata Play is opt-in per account (Admin > Agents > "Tata Play Access") -
-// same pattern as HP LPG Search above (own tataplay.py Selenium automation
+// same pattern as HP Gas Search above (own tataplay.py Selenium automation
 // against the distributor's mysso.tataplay.com SSO login, proxied through
 // tataplay_api.php). Placed directly below Indian LPG Search per explicit
 // instruction.

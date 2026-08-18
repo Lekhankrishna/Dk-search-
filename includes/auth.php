@@ -222,7 +222,7 @@ function requireHpGasAccess(string $loginPath = 'login.php'): void {
     requireLogin($loginPath);
     if (!hasHpGasAccess()) {
         http_response_code(403);
-        die('Access denied: HP LPG Search access has not been granted for this account.');
+        die('Access denied: HP Gas Search access has not been granted for this account.');
     }
 }
 

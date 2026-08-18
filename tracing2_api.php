@@ -84,12 +84,12 @@ switch ($requiresAccess) {
     case 'hp_gas':
         if (!hasHpGasAccess()) {
             http_response_code(403);
-            echo json_encode(['error' => 'HP LPG Search access has not been granted for this account.']);
+            echo json_encode(['error' => 'HP Gas Search access has not been granted for this account.']);
             exit;
         }
         $limitColumn = 'hp_gas_monthly_limit';
         $searchType  = 'hp_gas';
-        $limitLabel  = 'HP LPG Search';
+        $limitLabel  = 'HP Gas Search';
         break;
     case 'indane_gas':
         if (!hasIndaneGasAccess()) {

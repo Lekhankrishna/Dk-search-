@@ -487,8 +487,8 @@ require __DIR__ . '/../includes/header.php';
       </label>
       <label class="acf-feature">
         <input type="checkbox" name="hp_gas_access" value="1">
-        <span>HP LPG Search</span>
-        <span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
+        <span>HP Gas Search</span>
+        <span class="acf-limit" title="How many HP Gas searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
           <input type="number" name="hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
         </span>
       </label>
@@ -806,8 +806,8 @@ require __DIR__ . '/../includes/header.php';
           </label>
           <label class="acf-feature">
             <input type="checkbox" name="hp_gas_access" id="edit-hp_gas_access" value="1">
-            <span>HP LPG Search</span>
-            <span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
+            <span>HP Gas Search</span>
+            <span class="acf-limit" title="How many HP Gas searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
               <input type="number" name="hp_gas_monthly_limit" id="edit-hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
             </span>
           </label>

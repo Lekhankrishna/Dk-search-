@@ -1,5 +1,5 @@
 <?php
-// Archives every agent's HP LPG Search result to a shared file on the D:
+// Archives every agent's HP Gas Search result to a shared file on the D:
 // drive (2026-08-10) - same architecture/reasoning as
 // includes/pan_india_archive.php, includes/pan_india_pro_archive.php, and
 // includes/eagleeye_archive.php (file-based, not a DB table, so this
