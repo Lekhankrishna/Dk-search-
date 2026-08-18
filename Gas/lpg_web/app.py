@@ -8,6 +8,8 @@ import uuid
 from lpg_search import run_bulk_search
 from rc_print import run_rc_print
 from hp_gas import run_hp_gas_single
+from tataplay import run_tataplay_single
+from tracing2_tools import run_tool_search, TOOL_REGISTRY
 
 app = Flask(__name__)
 
@@ -265,6 +267,51 @@ def hp_gas():
         except Exception as e:
             full_trace = traceback.format_exc()
             print(f"[hp-gas {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/tataplay", methods=["POST"])
+def tataplay():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print/hp-gas - single lookup, synchronous,
+    # sharing selenium_semaphore with every other Selenium-backed tool.
+    with selenium_semaphore:
+        try:
+            result = run_tataplay_single(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[tataplay {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/tracing2-tool", methods=["POST"])
+def tracing2_tool():
+    data = request.get_json(silent=True) or {}
+    tool_slug = str(data.get("toolSlug", "")).strip()
+    query = str(data.get("query", "")).strip()
+
+    if tool_slug not in TOOL_REGISTRY:
+        return jsonify({"error": "Unknown tool"}), 400
+    if not query:
+        return jsonify({"error": "No query value provided"}), 400
+
+    # Same shape as /api/mobile-info etc - single lookup, synchronous,
+    # sharing selenium_semaphore with every other Selenium-backed tool.
+    with selenium_semaphore:
+        try:
+            result = run_tool_search(tool_slug, query)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[tracing2-tool {tool_slug} {query}] FAILED:\n{full_trace}")
             return jsonify({"error": clean_error_message(e)}), 502
 
     return jsonify(result)

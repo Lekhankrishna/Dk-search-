@@ -95,6 +95,36 @@ require __DIR__ . '/includes/header.php';
   .lpg-textarea{width:100%;height:110px;padding:9px 14px;font-size:13px;color:#333;
     border:1px solid #e0e0e0;border-radius:9px;background:#fff;resize:vertical;outline:none;}
   .lpg-textarea:focus{border-color:#2e9e3f;box-shadow:0 0 0 3px rgba(46,158,63,.25);}
+
+  /* Indane Gas Info panel (2026-08-18) - manual, single-search-only lookup
+     against the shared Tracing 2.0 "indane-gas-info" tool/credit budget
+     (tracing2_api.php), separate from the LPG job/table above since it's
+     one blocking fetch rather than a job to poll. Hidden entirely while
+     Bulk Search is active - see showMode() below. */
+  .lpg-indane-wrap{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:16px;overflow:hidden;}
+  .lpg-indane-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 16px;border-bottom:1px solid #e0e0e0;background:#eeeef6;}
+  .lpg-indane-title{font-size:12.5px;font-weight:700;color:#333;display:flex;align-items:center;gap:8px;}
+  .lpg-indane-cost{opacity:.7;font-weight:600;}
+  .lpg-indane-status{padding:10px 16px 0;font-size:12px;color:#555;}
+  .lpg-indane-quota{font-size:11px;color:#999;padding:2px 16px 0;}
+  .lpg-indane-records{padding:4px 16px 16px;}
+
+  /* Record card styling, copied from tracing2.php's own .t2-* rules so a
+     record renders identically here as it does on that page. */
+  .t2-group-heading{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:#2e9e3f;margin:20px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e2ea;}
+  .t2-group-heading:first-child{margin-top:0;}
+  .t2-record{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;border:1px solid #eee;}
+  .t2-record-header{padding:12px 16px;background:#2e9e3f;color:#fff;display:flex;align-items:center;gap:10px;}
+  .t2-record-header i{font-size:16px;}
+  .t2-record-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+  .t2-record-status{margin-left:auto;font-size:10.5px;padding:2px 10px;border-radius:999px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:rgba(255,255,255,.2);}
+  .t2-field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:16px;}
+  .t2-field-item{display:flex;align-items:flex-start;gap:10px;}
+  .t2-field-item i{font-size:15px;color:#2e9e3f;margin-top:2px;flex-shrink:0;}
+  .t2-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#999;margin-bottom:2px;}
+  .t2-field-value{font-size:13px;font-weight:600;color:#222;word-break:break-word;}
 </style>
 
 <div class="lpg-tabs">
@@ -167,6 +197,24 @@ require __DIR__ . '/includes/header.php';
   </table>
 </div>
 
+<?php if (hasIndaneGasAccess()): ?>
+<!-- Manual, on-demand lookup against Indane Gas Info's own dedicated
+     access + count-based monthly quota (indane_gas_access/
+     indane_gas_monthly_limit, promoted out of the generic Tracing 2.0
+     bucket 2026-08-18) - not auto-fetched, since firing it for every LPG
+     search would spend a search the agent didn't ask for. Single Search
+     mode only - hidden in Bulk Search by showMode() below. -->
+<div class="lpg-indane-wrap" id="lpgIndaneWrap">
+  <div class="lpg-indane-header">
+    <span class="lpg-indane-title"><i class="bi bi-fuel-pump"></i> Indane Gas</span>
+    <button id="lpgIndaneBtn" class="lpg-btn lpg-btn-sm" type="button">Get Indane Gas <span class="lpg-indane-cost">(100 credits)</span></button>
+  </div>
+  <div class="lpg-indane-status" id="lpgIndaneStatus"></div>
+  <div class="lpg-indane-quota" id="lpgIndaneQuota"></div>
+  <div class="lpg-indane-records" id="lpgIndaneRecords"></div>
+</div>
+<?php endif; ?>
+
 <script>
 const IS_ADMIN = <?= (currentUser()['role'] ?? '') === 'admin' ? 'true' : 'false' ?>;
 // 500 (not Infinity) even for admins - the backend (lpg_search.py's
@@ -206,12 +254,15 @@ const tabBulk = document.getElementById("lpgTabBulk");
 const singleMode = document.getElementById("lpgSingleMode");
 const bulkMode = document.getElementById("lpgBulkMode");
 
+const indaneWrap = document.getElementById("lpgIndaneWrap"); // absent if the agent lacks the tool checkbox (Admin > Agents)
+
 function showMode(mode) {
   const isBulk = mode === "bulk";
   tabBulk.classList.toggle("active", isBulk);
   tabSingle.classList.toggle("active", !isBulk);
   bulkMode.style.display = isBulk ? "" : "none";
   singleMode.style.display = isBulk ? "none" : "";
+  if (indaneWrap) indaneWrap.style.display = isBulk ? "none" : "";
 }
 tabSingle.addEventListener("click", () => showMode("single"));
 tabBulk.addEventListener("click", () => showMode("bulk"));
@@ -478,6 +529,114 @@ bulkClearBtn.addEventListener("click", () => {
   setSearching(false);
   stopConfetti();
 });
+
+// --- Indane Gas Info panel - separate tool/backend from the LPG search
+// above (tracing2_api.php's "indane-gas-info" tool, own dedicated
+// indane_gas_access/indane_gas_monthly_limit quota), fetched only when the
+// agent clicks the button. Only present in the DOM at all if the PHP gate
+// above granted access.
+const indaneBtn = document.getElementById("lpgIndaneBtn");
+if (indaneBtn) {
+  const indaneStatus = document.getElementById("lpgIndaneStatus");
+  const indaneQuota = document.getElementById("lpgIndaneQuota");
+  const indaneRecords = document.getElementById("lpgIndaneRecords");
+
+  // Same generic message for every failure (bad input, quota reached,
+  // access not granted, a Selenium crash, an unreachable backend) as
+  // tracing2.php uses for this exact same backend call - see that page's
+  // own SERVER_DOWN_MESSAGE comment.
+  const INDANE_SERVER_DOWN_MESSAGE = "Server is down. Please try again later.";
+
+  // Best-guess icon per field label, copied from tracing2.php's fieldIcon().
+  function indaneFieldIcon(label) {
+    const l = label.toLowerCase();
+    if (/(phone|mobile|node|number)/.test(l)) return "bi-telephone-fill";
+    if (/(address|location|city|state|pincode|circle)/.test(l)) return "bi-geo-alt-fill";
+    if (/name/.test(l)) return "bi-person-fill";
+    if (/(bank|account|ifsc)/.test(l)) return "bi-bank";
+    if (/(email|mail)/.test(l)) return "bi-envelope-fill";
+    if (/(aadhaar|pan|id|linkage|imei)/.test(l)) return "bi-credit-card-2-front-fill";
+    if (/(valid|verif|status|merchant)/.test(l)) return "bi-shield-check";
+    if (/(vpa|upi|credit)/.test(l)) return "bi-wallet2";
+    return "bi-info-circle-fill";
+  }
+
+  // Same card shape as tracing2.php's buildRecordCard(), reusing its .t2-*
+  // classes so a record looks identical on both pages.
+  function buildIndaneRecordCard(record) {
+    const box = document.createElement("div");
+    box.className = "t2-record";
+
+    const header = document.createElement("div");
+    header.className = "t2-record-header";
+    const headerIcon = record.status ? "bi-person-circle" : "bi-folder2-open";
+    header.innerHTML = `<i class="bi ${headerIcon}"></i><span class="t2-record-name"></span><span class="t2-record-status"></span>`;
+    header.querySelector(".t2-record-name").textContent = record.name || "Record";
+    const statusBadge = header.querySelector(".t2-record-status");
+    if (record.status) { statusBadge.textContent = record.status; } else { statusBadge.remove(); }
+    box.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "t2-field-grid";
+    (record.fields || []).forEach(field => {
+      const item = document.createElement("div");
+      item.className = "t2-field-item";
+      item.innerHTML = `<i class="bi"></i><div><div class="t2-field-label"></div><div class="t2-field-value"></div></div>`;
+      item.querySelector("i").classList.add(indaneFieldIcon(field.label));
+      item.querySelector(".t2-field-label").textContent = field.label;
+      item.querySelector(".t2-field-value").textContent = field.value || "—";
+      grid.appendChild(item);
+    });
+    box.appendChild(grid);
+    return box;
+  }
+
+  indaneBtn.addEventListener("click", async () => {
+    const number = numberBox.value.replace(/\D+/g, "");
+    if (!number) {
+      indaneStatus.textContent = "Enter a mobile number above first.";
+      return;
+    }
+
+    indaneBtn.disabled = true;
+    indaneStatus.textContent = "Looking up Indane Gas…";
+    indaneRecords.innerHTML = "";
+
+    try {
+      const res = await fetch("tracing2_api.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool: "indane-gas-info", query: number })
+      });
+      const data = await res.json();
+
+      if (res.status === 401) {
+        window.location.href = data.loginUrl || "login.php";
+        return;
+      }
+      if (typeof data.used === "number" && typeof data.limit === "number") {
+        const remaining = Math.max(0, data.limit - data.used);
+        indaneQuota.textContent = `${remaining} of ${data.limit} ${data.unit || "credits"} left this month`;
+      }
+      if (!res.ok) {
+        indaneStatus.textContent = INDANE_SERVER_DOWN_MESSAGE;
+        return;
+      }
+
+      const records = (data.found && Array.isArray(data.records)) ? data.records : [];
+      if (records.length) {
+        indaneStatus.textContent = `${records.length} result${records.length === 1 ? "" : "s"} found`;
+        records.forEach(r => indaneRecords.appendChild(buildIndaneRecordCard(r)));
+      } else {
+        indaneStatus.textContent = "No result found";
+      }
+    } catch (err) {
+      indaneStatus.textContent = INDANE_SERVER_DOWN_MESSAGE;
+    } finally {
+      indaneBtn.disabled = false;
+    }
+  });
+}
 </script>
 
 <?php require __DIR__ . '/includes/footer.php'; ?>

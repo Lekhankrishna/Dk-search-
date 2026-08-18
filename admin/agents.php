@@ -2,9 +2,47 @@
 require __DIR__ . '/../includes/auth.php';
 requireAdmin('../login.php');
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../includes/tracing2_tools.php';
 
 $message     = '';
 $messageType = 'success';
+
+// Shared by both the create form and edit modal's Tracing 2.0 tool
+// checklist - never trust raw POST values as tool slugs directly.
+$TRACING2_SELECTABLE_SLUGS = array_keys(tracing2SelectableTools());
+
+// Reads tracing2_tools[] from the current POST, filtered against the
+// known-tool allowlist, and JSON-encodes it for storage. An admin
+// unchecking every box submits no tracing2_tools[] entries at all, which
+// still needs to save as an explicit '[]' (not skip the column) - see the
+// NULL-vs-empty-array distinction in migrate_add_locate_me_tools.sql
+// (column later renamed by migrate_rename_locate_me_to_tracing2.sql).
+function tracing2ToolsFromPost(array $allowedSlugs): string {
+    $submitted = $_POST['tracing2_tools'] ?? [];
+    if (!is_array($submitted)) $submitted = [];
+    $filtered = array_values(array_intersect($submitted, $allowedSlugs));
+    return json_encode($filtered);
+}
+
+// Reads tracing2_tool_credits[slug] => value from the current POST (one
+// number input per tool, see the "Tracing 2.0 — Select Tools" panel below)
+// and JSON-encodes it as a slug => credits map for this one agent - see
+// migrate_add_tracing2_tool_credits.sql and tracing2CreditsForUser(). Only
+// known slugs are kept; blank/non-numeric/negative values are dropped
+// rather than saved as 0, so that tool just falls back to the global
+// default for this agent instead of becoming free.
+function tracing2ToolCreditsFromPost(array $allowedSlugs): string {
+    $submitted = $_POST['tracing2_tool_credits'] ?? [];
+    if (!is_array($submitted)) $submitted = [];
+    $filtered = [];
+    foreach ($allowedSlugs as $slug) {
+        if (!isset($submitted[$slug]) || $submitted[$slug] === '') continue;
+        $value = (int) $submitted[$slug];
+        if ($value < 0) continue;
+        $filtered[$slug] = min(65535, $value);
+    }
+    return json_encode($filtered);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -16,10 +54,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password  = $_POST['password']       ?? '';
         $role      = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $tracing2Access = isset($_POST['tracing2_access']) ? 1 : 0;
+        $tracing2MonthlyLimit = min(65535, max(0, (int) ($_POST['tracing2_monthly_limit'] ?? 1000)));
+        $tracing2Tools = tracing2ToolsFromPost($TRACING2_SELECTABLE_SLUGS);
+        $tracing2ToolCredits = tracing2ToolCreditsFromPost($TRACING2_SELECTABLE_SLUGS);
         $rcPrintAccess = isset($_POST['rc_print_access']) ? 1 : 0;
         $rcPrintMonthlyLimit = min(65535, max(0, (int) ($_POST['rc_print_monthly_limit'] ?? 5)));
         $hpGasAccess = isset($_POST['hp_gas_access']) ? 1 : 0;
         $hpGasMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5)));
+        $indaneGasAccess = isset($_POST['indane_gas_access']) ? 1 : 0;
+        $indaneGasMonthlyLimit = min(65535, max(0, (int) ($_POST['indane_gas_monthly_limit'] ?? 5)));
+        $tataPlayAccess = isset($_POST['tata_play_access']) ? 1 : 0;
+        $tataPlayMonthlyLimit = min(65535, max(0, (int) ($_POST['tata_play_monthly_limit'] ?? 5)));
         $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
         $eagleEyeMonthlyLimit = min(65535, max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5)));
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
@@ -37,8 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :advanced_search_access, :advanced_search_monthly_limit, :max_sessions, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, tata_play_access, tata_play_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :tracing2_access, :tracing2_monthly_limit, :tracing2_tools, :tracing2_tool_credits, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :indane_gas_access, :indane_gas_monthly_limit, :tata_play_access, :tata_play_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :advanced_search_access, :advanced_search_monthly_limit, :max_sessions, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -48,10 +94,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                     'role'      => $role,
                     'lpg_access'=> $lpgAccess,
+                    'tracing2_access' => $tracing2Access,
+                    'tracing2_monthly_limit' => $tracing2MonthlyLimit,
+                    'tracing2_tools' => $tracing2Tools,
+                    'tracing2_tool_credits' => $tracing2ToolCredits,
                     'rc_print_access' => $rcPrintAccess,
                     'rc_print_monthly_limit' => $rcPrintMonthlyLimit,
                     'hp_gas_access' => $hpGasAccess,
                     'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
+                    'indane_gas_access' => $indaneGasAccess,
+                    'indane_gas_monthly_limit' => $indaneGasMonthlyLimit,
+                    'tata_play_access' => $tataPlayAccess,
+                    'tata_play_monthly_limit' => $tataPlayMonthlyLimit,
                     'eagle_eye_access' => $eagleEyeAccess,
                     'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                     'pan_india_access' => $panIndiaAccess,
@@ -82,10 +136,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mobileNo = trim($_POST['mobile_no'] ?? '');
         $role     = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
+        $tracing2Access = isset($_POST['tracing2_access']) ? 1 : 0;
+        $tracing2MonthlyLimit = min(65535, max(0, (int) ($_POST['tracing2_monthly_limit'] ?? 1000)));
+        $tracing2Tools = tracing2ToolsFromPost($TRACING2_SELECTABLE_SLUGS);
+        $tracing2ToolCredits = tracing2ToolCreditsFromPost($TRACING2_SELECTABLE_SLUGS);
         $rcPrintAccess = isset($_POST['rc_print_access']) ? 1 : 0;
         $rcPrintMonthlyLimit = min(65535, max(0, (int) ($_POST['rc_print_monthly_limit'] ?? 5)));
         $hpGasAccess = isset($_POST['hp_gas_access']) ? 1 : 0;
         $hpGasMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5)));
+        $indaneGasAccess = isset($_POST['indane_gas_access']) ? 1 : 0;
+        $indaneGasMonthlyLimit = min(65535, max(0, (int) ($_POST['indane_gas_monthly_limit'] ?? 5)));
+        $tataPlayAccess = isset($_POST['tata_play_access']) ? 1 : 0;
+        $tataPlayMonthlyLimit = min(65535, max(0, (int) ($_POST['tata_play_monthly_limit'] ?? 5)));
         $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
         $eagleEyeMonthlyLimit = min(65535, max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5)));
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
@@ -106,17 +168,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, advanced_search_access = :advanced_search_access, advanced_search_monthly_limit = :advanced_search_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, tracing2_access = :tracing2_access, tracing2_monthly_limit = :tracing2_monthly_limit, tracing2_tools = :tracing2_tools, tracing2_tool_credits = :tracing2_tool_credits, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, indane_gas_access = :indane_gas_access, indane_gas_monthly_limit = :indane_gas_monthly_limit, tata_play_access = :tata_play_access, tata_play_monthly_limit = :tata_play_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, advanced_search_access = :advanced_search_access, advanced_search_monthly_limit = :advanced_search_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
                 'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                 'role'      => $role,
                 'lpg_access'=> $lpgAccess,
+                'tracing2_access' => $tracing2Access,
+                'tracing2_monthly_limit' => $tracing2MonthlyLimit,
+                'tracing2_tools' => $tracing2Tools,
+                'tracing2_tool_credits' => $tracing2ToolCredits,
                 'rc_print_access' => $rcPrintAccess,
                 'rc_print_monthly_limit' => $rcPrintMonthlyLimit,
                 'hp_gas_access' => $hpGasAccess,
                 'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
+                'indane_gas_access' => $indaneGasAccess,
+                'indane_gas_monthly_limit' => $indaneGasMonthlyLimit,
+                'tata_play_access' => $tataPlayAccess,
+                'tata_play_monthly_limit' => $tataPlayMonthlyLimit,
                 'eagle_eye_access' => $eagleEyeAccess,
                 'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                 'pan_india_access' => $panIndiaAccess,
@@ -152,6 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET lpg_search_access = 1 - lpg_search_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_tracing2') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET tracing2_access = 1 - tracing2_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
     } elseif ($action === 'toggle_rc_print') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET rc_print_access = 1 - rc_print_access WHERE id = :id');
@@ -159,6 +233,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle_hp_gas') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET hp_gas_access = 1 - hp_gas_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_tata_play') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET tata_play_access = 1 - tata_play_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
     } elseif ($action === 'toggle_eagle_eye') {
         $id = (int) ($_POST['id'] ?? 0);
@@ -212,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, tata_play_access, tata_play_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
 )->fetchAll();
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
@@ -271,6 +349,29 @@ require __DIR__ . '/../includes/header.php';
   .acf-inline-field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--c-text);white-space:nowrap;}
   .acf-inline-field input{width:56px;padding:8px 10px;border:1px solid var(--c-border);border-radius:var(--r-md);
     background:var(--c-surface);color:var(--c-text);font-size:13px;outline:none;}
+
+  /* Tracing 2.0's per-tool checklist - expands below the Feature Access grid
+     when its own "Tracing 2.0" checkbox is ticked (JS-toggled, see bottom of
+     this page), rather than living inside that one grid cell where 22
+     tools would never fit. */
+  .acf-tracing2-tools{display:none;margin:-4px 0 14px;padding:12px 14px;
+    border:1px dashed var(--c-accent);border-radius:var(--r-md);background:var(--c-accent-light);}
+  .acf-tracing2-tools.open{display:block;}
+  .acf-tracing2-tools-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--c-accent-hover);margin-bottom:8px;}
+  .acf-tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 10px;}
+  .acf-tool-check{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--c-text);
+    cursor:pointer;padding:5px 8px;border-radius:6px;}
+  .acf-tool-check:hover{background:var(--c-surface);}
+  .acf-tool-check input{width:14px;height:14px;flex-shrink:0;accent-color:var(--c-accent);cursor:pointer;}
+  .acf-tool-check span{flex:1;white-space:normal;line-height:1.3;word-break:break-word;}
+  /* Per-agent credit-cost input (2026-08-18, replaces the old read-only
+     "100 cr" badge) - narrow number input + unit label, same shape as the
+     "/mo" monthly-limit inputs elsewhere on this page (.acf-limit input). */
+  .acf-tool-check .acf-tool-credit{flex:0 0 auto;display:flex;align-items:center;gap:3px;font-size:10.5px;
+    color:var(--c-accent-hover);font-weight:700;white-space:nowrap;}
+  .acf-tool-credit input{width:48px;padding:2px 5px;border:1px solid var(--c-border);border-radius:6px;
+    background:var(--c-surface);color:var(--c-text);font-size:11px;text-align:center;font-weight:600;}
 
   /* Edit modal widened (2026-08-08, widened further same day) - the shared
      .modal-box max-width (420px, used by every modal in the app) left
@@ -367,6 +468,13 @@ require __DIR__ . '/../includes/header.php';
         <span>LPG Search</span>
       </label>
       <label class="acf-feature">
+        <input type="checkbox" name="tracing2_access" id="create-tracing2_access" value="1">
+        <span>Tracing 2.0</span>
+        <span class="acf-limit" title="Total locateme.services credits this agent can spend per calendar month, across whichever tools are checked below - a cheap 1-credit search and an expensive 150-credit search count differently against this budget, not 1-for-1. Ignored for admins.">
+          <input type="number" name="tracing2_monthly_limit" value="1000" min="0" max="65535" onclick="event.stopPropagation()">cr/mo
+        </span>
+      </label>
+      <label class="acf-feature">
         <input type="checkbox" name="pan_india_access" value="1">
         <span>Pan India</span>
       </label>
@@ -382,6 +490,20 @@ require __DIR__ . '/../includes/header.php';
         <span>HP LPG Search</span>
         <span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
           <input type="number" name="hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="indane_gas_access" value="1">
+        <span>Indane Gas</span>
+        <span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins.">
+          <input type="number" name="indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <label class="acf-feature">
+        <input type="checkbox" name="tata_play_access" value="1">
+        <span>TATA SKY DTH</span>
+        <span class="acf-limit" title="How many Tata Play searches this agent can run per calendar month - each one logs into the distributor's own mysso.tataplay.com account. Ignored for admins.">
+          <input type="number" name="tata_play_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
         </span>
       </label>
       <label class="acf-feature">
@@ -405,6 +527,22 @@ require __DIR__ . '/../includes/header.php';
           <input type="number" name="advanced_search_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
         </span>
       </label>
+    </div>
+
+    <div class="acf-tracing2-tools" id="create-tracing2-tools-panel">
+      <div class="acf-tracing2-tools-label"><i class="bi bi-geo-alt-fill"></i> Tracing 2.0 — Select Tools</div>
+      <div class="acf-tools-grid">
+        <?php foreach (tracing2SelectableTools() as $slug => $t): ?>
+          <label class="acf-tool-check">
+            <input type="checkbox" name="tracing2_tools[]" value="<?= htmlspecialchars($slug) ?>" checked>
+            <span title="<?= htmlspecialchars($t['label']) ?>"><?= htmlspecialchars($t['label']) ?></span>
+            <span class="acf-tool-credit">
+              <input type="number" name="tracing2_tool_credits[<?= htmlspecialchars($slug) ?>]"
+                     value="<?= (int) tracing2CreditsFor($slug) ?>" min="0" max="65535" onclick="event.stopPropagation()"> cr
+            </span>
+          </label>
+        <?php endforeach; ?>
+      </div>
     </div>
 
     <div class="acf-row">
@@ -454,9 +592,12 @@ require __DIR__ . '/../includes/header.php';
           <th>Role</th>
           <th>Status</th>
           <th>LPG</th>
+          <th>Tracing 2.0</th>
           <th>Pan India</th>
           <th>RC Print</th>
           <th>HP Gas</th>
+          <th>Indane Gas</th>
+          <th>TATA SKY DTH</th>
           <th>Adv. Pan India</th>
           <th>Night Out</th>
           <th>Advanced Search</th>
@@ -492,6 +633,18 @@ require __DIR__ . '/../includes/header.php';
             </span>
           </td>
           <td>
+            <span class="badge <?= $u['tracing2_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['tracing2_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['tracing2_access']):
+              $uToolCount = $u['tracing2_tools'] !== null ? count(json_decode($u['tracing2_tools'], true) ?: []) : count($TRACING2_SELECTABLE_SLUGS);
+            ?>
+              <div class="text-sm text-muted" style="margin-top:2px">
+                <?= $uToolCount ?>/<?= count($TRACING2_SELECTABLE_SLUGS) ?> tools<?= $u['role'] !== 'admin' ? ', ' . (int) $u['tracing2_monthly_limit'] . ' cr/mo' : '' ?>
+              </div>
+            <?php endif; ?>
+          </td>
+          <td>
             <span class="badge <?= $u['pan_india_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['pan_india_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
@@ -510,6 +663,22 @@ require __DIR__ . '/../includes/header.php';
             </span>
             <?php if ($u['hp_gas_access'] && $u['role'] !== 'admin'): ?>
               <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['hp_gas_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['indane_gas_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['indane_gas_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['indane_gas_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['indane_gas_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['tata_play_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['tata_play_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['tata_play_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['tata_play_monthly_limit'] ?>/month</div>
             <?php endif; ?>
           </td>
           <td>
@@ -558,7 +727,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['advanced_search_access'] ?>, <?= (int) $u['advanced_search_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['tracing2_access'] ?>, <?= (int) $u['tracing2_monthly_limit'] ?>, <?= htmlspecialchars(json_encode($u['tracing2_tools'] !== null ? (json_decode($u['tracing2_tools'], true) ?: []) : null), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['tracing2_tool_credits'] !== null ? (json_decode($u['tracing2_tool_credits'], true) ?: []) : null), ENT_QUOTES) ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['indane_gas_access'] ?>, <?= (int) $u['indane_gas_monthly_limit'] ?>, <?= (int) $u['tata_play_access'] ?>, <?= (int) $u['tata_play_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['advanced_search_access'] ?>, <?= (int) $u['advanced_search_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -630,6 +799,13 @@ require __DIR__ . '/../includes/header.php';
             <span>LPG Search</span>
           </label>
           <label class="acf-feature">
+            <input type="checkbox" name="tracing2_access" id="edit-tracing2_access" value="1">
+            <span>Tracing 2.0</span>
+            <span class="acf-limit" title="Total locateme.services credits this agent can spend per calendar month, across whichever tools are checked below - a cheap 1-credit search and an expensive 150-credit search count differently against this budget, not 1-for-1. Ignored for admins.">
+              <input type="number" name="tracing2_monthly_limit" id="edit-tracing2_monthly_limit" value="1000" min="0" max="65535" onclick="event.stopPropagation()">cr/mo
+            </span>
+          </label>
+          <label class="acf-feature">
             <input type="checkbox" name="pan_india_access" id="edit-pan_india_access" value="1">
             <span>Pan India</span>
           </label>
@@ -645,6 +821,20 @@ require __DIR__ . '/../includes/header.php';
             <span>HP LPG Search</span>
             <span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
               <input type="number" name="hp_gas_monthly_limit" id="edit-hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="indane_gas_access" id="edit-indane_gas_access" value="1">
+            <span>Indane Gas</span>
+            <span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins.">
+              <input type="number" name="indane_gas_monthly_limit" id="edit-indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature">
+            <input type="checkbox" name="tata_play_access" id="edit-tata_play_access" value="1">
+            <span>TATA SKY DTH</span>
+            <span class="acf-limit" title="How many Tata Play searches this agent can run per calendar month - each one logs into the distributor's own mysso.tataplay.com account. Ignored for admins.">
+              <input type="number" name="tata_play_monthly_limit" id="edit-tata_play_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
             </span>
           </label>
           <label class="acf-feature">
@@ -668,6 +858,22 @@ require __DIR__ . '/../includes/header.php';
               <input type="number" name="advanced_search_monthly_limit" id="edit-advanced_search_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
             </span>
           </label>
+        </div>
+        <div class="acf-tracing2-tools" id="edit-tracing2-tools-panel">
+          <div class="acf-tracing2-tools-label"><i class="bi bi-geo-alt-fill"></i> Tracing 2.0 — Select Tools</div>
+          <div class="acf-tools-grid">
+            <?php foreach (tracing2SelectableTools() as $slug => $t): ?>
+              <label class="acf-tool-check">
+                <input type="checkbox" name="tracing2_tools[]" class="edit-tracing2-tool" value="<?= htmlspecialchars($slug) ?>">
+                <span title="<?= htmlspecialchars($t['label']) ?>"><?= htmlspecialchars($t['label']) ?></span>
+                <span class="acf-tool-credit">
+                  <input type="number" name="tracing2_tool_credits[<?= htmlspecialchars($slug) ?>]" class="edit-tracing2-tool-credit"
+                         data-slug="<?= htmlspecialchars($slug) ?>" data-default="<?= (int) tracing2CreditsFor($slug) ?>"
+                         value="<?= (int) tracing2CreditsFor($slug) ?>" min="0" max="65535" onclick="event.stopPropagation()"> cr
+                </span>
+              </label>
+            <?php endforeach; ?>
+          </div>
         </div>
       </div>
       <div class="edit-settings-grid">
@@ -709,17 +915,41 @@ require __DIR__ . '/../includes/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, advancedSearchAccess, advancedSearchMonthlyLimit, maxSessions, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, tracing2Access, tracing2MonthlyLimit, tracing2Tools, tracing2ToolCredits, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, indaneGasAccess, indaneGasMonthlyLimit, tataPlayAccess, tataPlayMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, advancedSearchAccess, advancedSearchMonthlyLimit, maxSessions, expiresDate, expiresTime) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
   document.getElementById('edit-mobile_no').value = mobileNo;
   document.getElementById('edit-role').value = role;
   document.getElementById('edit-lpg_search_access').checked = !!lpgAccess;
+  document.getElementById('edit-tracing2_access').checked = !!tracing2Access;
+  document.getElementById('edit-tracing2_monthly_limit').value = tracing2MonthlyLimit;
+  // tracing2Tools is null (never explicitly configured - see
+  // migrate_add_locate_me_tools.sql, column later renamed by
+  // migrate_rename_locate_me_to_tracing2.sql) or an array of allowed tool
+  // slugs. null shows every box checked (matching what hasTracing2ToolAccess()
+  // actually grants in that case); a real array checks only its entries.
+  document.querySelectorAll('.edit-tracing2-tool').forEach(cb => {
+    cb.checked = tracing2Tools === null || tracing2Tools.includes(cb.value);
+  });
+  // tracing2ToolCredits is null (this agent has no overrides at all) or a
+  // partial slug => credits map - a slug missing from it still falls back
+  // to that tool's own global default (data-default), same rule
+  // tracing2CreditsForUser() applies server-side.
+  document.querySelectorAll('.edit-tracing2-tool-credit').forEach(input => {
+    const slug = input.dataset.slug;
+    const override = tracing2ToolCredits !== null ? tracing2ToolCredits[slug] : undefined;
+    input.value = (override !== undefined && override !== null) ? override : input.dataset.default;
+  });
+  toggleTracing2ToolsPanel(document.getElementById('edit-tracing2_access'), document.getElementById('edit-tracing2-tools-panel'));
   document.getElementById('edit-rc_print_access').checked = !!rcPrintAccess;
   document.getElementById('edit-rc_print_monthly_limit').value = rcPrintMonthlyLimit;
   document.getElementById('edit-hp_gas_access').checked = !!hpGasAccess;
   document.getElementById('edit-hp_gas_monthly_limit').value = hpGasMonthlyLimit;
+  document.getElementById('edit-indane_gas_access').checked = !!indaneGasAccess;
+  document.getElementById('edit-indane_gas_monthly_limit').value = indaneGasMonthlyLimit;
+  document.getElementById('edit-tata_play_access').checked = !!tataPlayAccess;
+  document.getElementById('edit-tata_play_monthly_limit').value = tataPlayMonthlyLimit;
   document.getElementById('edit-eagle_eye_access').checked = !!eagleEyeAccess;
   document.getElementById('edit-eagle_eye_monthly_limit').value = eagleEyeMonthlyLimit;
   document.getElementById('edit-pan_india_access').checked = !!panIndiaAccess;
@@ -736,6 +966,19 @@ function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, rcPrin
 function closeEditModal() {
   document.getElementById('edit-modal-overlay').style.display = 'none';
 }
+
+// Tracing 2.0's per-tool checklist only makes sense once Tracing 2.0 itself is
+// checked - shown/hidden in lockstep with that one checkbox, same idea as
+// index.php's field-group show/hide per search mode.
+function toggleTracing2ToolsPanel(checkbox, panel) {
+  panel.classList.toggle('open', checkbox.checked);
+}
+document.getElementById('create-tracing2_access').addEventListener('change', function () {
+  toggleTracing2ToolsPanel(this, document.getElementById('create-tracing2-tools-panel'));
+});
+document.getElementById('edit-tracing2_access').addEventListener('change', function () {
+  toggleTracing2ToolsPanel(this, document.getElementById('edit-tracing2-tools-panel'));
+});
 document.getElementById('edit-password-toggle-btn').addEventListener('click', () => {
   const input = document.getElementById('edit-new_password');
   const icon  = document.getElementById('edit-password-toggle-icon');
@@ -842,9 +1085,12 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
         'role' => ucfirst($u['role']),
         'status' => $isExpired ? 'Expired' : ($u['is_active'] ? 'Active' : 'Paused'),
         'lpg' => $u['lpg_search_access'] ? 'Granted' : 'Not Granted',
+        'tracing2' => $u['tracing2_access'] ? "Granted ({$u['tracing2_monthly_limit']} cr/mo)" : 'Not Granted',
         'pan_india' => $u['pan_india_access'] ? 'Granted' : 'Not Granted',
         'rc_print' => $u['rc_print_access'] ? "Granted ({$u['rc_print_monthly_limit']}/mo)" : 'Not Granted',
         'hp_gas' => $u['hp_gas_access'] ? "Granted ({$u['hp_gas_monthly_limit']}/mo)" : 'Not Granted',
+        'indane_gas' => $u['indane_gas_access'] ? "Granted ({$u['indane_gas_monthly_limit']}/mo)" : 'Not Granted',
+        'tata_play' => $u['tata_play_access'] ? "Granted ({$u['tata_play_monthly_limit']}/mo)" : 'Not Granted',
         'adv_pan_india' => $u['eagle_eye_access'] ? "Granted ({$u['eagle_eye_monthly_limit']}/mo)" : 'Not Granted',
         'pan_india_pro' => $u['pan_india_pro_access'] ? "Granted ({$u['pan_india_pro_monthly_limit']}/mo)" : 'Not Granted',
         'advanced_search' => $u['advanced_search_access'] ? "Granted ({$u['advanced_search_monthly_limit']}/mo)" : 'Not Granted',
@@ -856,10 +1102,10 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
 }, $users), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
 document.getElementById('export-accounts-btn').addEventListener('click', () => {
-  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Status', 'LPG', 'Pan India', 'RC Print', 'HP Gas', 'Adv. Pan India', 'Night Out', 'Advanced Search', 'Max Logins', 'Expiry', 'Created At', 'Last Login'];
+  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Status', 'LPG', 'Tracing 2.0', 'Pan India', 'RC Print', 'HP Gas', 'Indane Gas', 'TATA SKY DTH', 'Adv. Pan India', 'Night Out', 'Advanced Search', 'Max Logins', 'Expiry', 'Created At', 'Last Login'];
   const aoa = [headers, ...AGENTS_EXPORT_DATA.map(u => [
-    u.id, u.username, u.full_name, u.mobile_no, u.role, u.status, u.lpg, u.pan_india,
-    u.rc_print, u.hp_gas, u.adv_pan_india, u.pan_india_pro, u.advanced_search, u.max_logins, u.expires_at, u.created_at, u.last_login_at,
+    u.id, u.username, u.full_name, u.mobile_no, u.role, u.status, u.lpg, u.tracing2, u.pan_india,
+    u.rc_print, u.hp_gas, u.indane_gas, u.tata_play, u.adv_pan_india, u.pan_india_pro, u.advanced_search, u.max_logins, u.expires_at, u.created_at, u.last_login_at,
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();

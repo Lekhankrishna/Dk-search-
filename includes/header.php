@@ -27,15 +27,23 @@ $searchRegionsExtra = [
 if (hasAdvancedSearchAccess()) {
     array_unshift($searchRegionsExtra, ['label' => 'Advanced Search', 'href' => 'advanced_search.php']);
 }
-// RC Print is opt-in per account (Admin > Agents > "RC Print Access") - same
-// pattern as LPG Search below. rc_print.php fetches a vehicle's RC PDF
-// server-side via rc_print_api.php -> Gas/lpg_web's /api/rc-print (Selenium,
-// same shape as the LPG bulk search automation) and renders it in the CRM's
-// own interface, rather than linking out to locateme.services directly. The
-// locateme.services login itself is hardcoded in Gas/lpg_web/rc_print.py,
-// same as lpg_search.py's SDMS USERNAME/PASSWORD - not in this app's DB.
-if (hasRcPrintAccess()) {
-    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
+// Tracing 2.0 is opt-in per account (Admin > Agents > "Tracing 2.0
+// Access") - drives every locateme.services tool (Mobile Info, Vehicle
+// Intelligence, UPI Finder, etc. - see includes/tracing2_tools.php) as
+// tabs on one page, via Gas/lpg_web/tracing2_tools.py's generic scraper.
+// RC Print and HP Gas Advanced (2026-08-17) are folded in here as tabs
+// too, replacing their own former standalone sidebar entries below - each
+// still gated by its own pre-existing access flag
+// (hasRcPrintAccess()/hasHpGasAccess()), checked inside tracing2.php
+// itself for tab visibility rather than here, since they're not separate
+// nav items anymore. Placed directly under Advanced Search per explicit
+// instruction - inserted at index 1 so it lands right after Advanced
+// Search regardless of whether Advanced Search itself was unshifted above
+// (index 0) or this account doesn't have that access (in which case it
+// simply becomes the new first item).
+if (hasTracing2Access()) {
+    $tracing2Index = hasAdvancedSearchAccess() ? 1 : 0;
+    array_splice($searchRegionsExtra, $tracing2Index, 0, [['label' => 'Tracing 2.0', 'href' => 'tracing2.php']]);
 }
 // Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
 // same as LPG Search below (2026-08-19 - previously unconditional for every
@@ -62,12 +70,6 @@ if (hasEagleEyeAccess()) {
 if (hasPanIndiaProAccess()) {
     $searchRegionsExtra[] = ['label' => 'Night Out', 'href' => 'pan_india_pro.php'];
 }
-// HP LPG Search is opt-in per account (Admin > Agents > "HP Gas Access") -
-// same pattern as RC Print above (own hp_gas.py automation against the same
-// locateme.services login, proxied through hp_gas_api.php).
-if (hasHpGasAccess()) {
-    $searchRegionsExtra[] = ['label' => 'HP LPG Search', 'href' => 'hp_gas.php'];
-}
 // LPG Search is opt-in per account (Admin > Agents > "LPG Search Access") —
 // only add the menu item at all when the current user has been granted it.
 // The pages/APIs enforce the same check server-side (403) regardless, so
@@ -75,14 +77,38 @@ if (hasHpGasAccess()) {
 // actual access control. Labelled "Indian LPG Search" (not just "LPG
 // Search") now that HP LPG Search also exists, so the two aren't ambiguous
 // in the sidebar.
-if (hasLpgSearchAccess()) {
+if (false && hasLpgSearchAccess()) {
     // Single Search and Bulk Search used to be two separate pages/sidebar
     // entries (lpg_search.php / lpg_bulk_search.php); combined into one page
     // with mode tabs (2026-08-11, same tabbed pattern as hp_gas.php) since
     // both hit the same Flask backend and render an identical results table -
     // lpg_bulk_search.php now just redirects here with ?mode=bulk for any
     // old bookmarks/links.
+    //
+    // Sidebar link hidden per explicit instruction (2026-08-18) - the
+    // `false &&` above is deliberate so this is a one-line revert (just
+    // remove it) rather than deleting the block. hasLpgSearchAccess(),
+    // lpg_search.php, and lpg_search_api.php are untouched - a direct
+    // link/bookmark still works for anyone who already has access.
     $searchRegionsExtra[] = ['label' => 'Indian LPG Search', 'href' => 'lpg_search.php'];
+}
+// Dedicated single-purpose page for the "Indane Gas Info" tool
+// (indane_gas_info.php), placed directly below Indian LPG Search since
+// agents look up both for the same customer. Has its own dedicated access
+// flag + count-based monthly quota (indane_gas_access, promoted out of the
+// generic Tracing 2.0 per-tool checklist 2026-08-18 - see
+// includes/tracing2_tools.php's own comment on why), same pattern as RC
+// Print/HP LPG Search.
+if (hasIndaneGasAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Indane Gas', 'href' => 'indane_gas_info.php'];
+}
+// Tata Play is opt-in per account (Admin > Agents > "Tata Play Access") -
+// same pattern as HP LPG Search above (own tataplay.py Selenium automation
+// against the distributor's mysso.tataplay.com SSO login, proxied through
+// tataplay_api.php). Placed directly below Indian LPG Search per explicit
+// instruction.
+if (hasTataPlayAccess()) {
+    $searchRegionsExtra[] = ['label' => 'TATA SKY DTH', 'href' => 'tataplay.php'];
 }
 $selectedState = $_GET['state'] ?? '';
 
