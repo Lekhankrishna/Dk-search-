@@ -16,6 +16,10 @@ if (!isSessionValid()) {
 }
 session_write_close(); // release session lock so other requests don't block
 
+// Bulk mobile search posts its params (an unlimited number list overflows a
+// GET URL) - fold them into $_GET so the rest of this file reads one place.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') $_GET = $_POST + $_GET;
+
 require_once __DIR__ . '/../config/db.php';
 
 // Set a per-query timeout so a slow scan never hangs the page
@@ -366,13 +370,15 @@ switch ($type) {
     case 'multi_mobile':
         $raw = trim($_GET['mobiles'] ?? '');
         if ($raw === '') { echo json_encode(['ok'=>false,'error'=>'Mobile numbers required']); exit; }
-        $numbers = array_slice(array_unique(preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY)), 0, 50);
+        // Bulk lookup is admin-only, with no cap on how many numbers are pasted.
+        if (($_SESSION['role'] ?? '') !== 'admin') { echo json_encode(['ok'=>false,'error'=>'Bulk search is available to admins only. Search one number at a time.']); exit; }
+        $numbers = array_values(array_unique(preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY)));
         if (empty($numbers)) { echo json_encode(['ok'=>false,'error'=>'Mobile numbers required']); exit; }
         $queryMode = 'in';
         $placeholders = [];
         foreach ($numbers as $i => $num) { $placeholders[] = ":mob$i"; $params["mob$i"] = $num; }
         $where = 'mobile_no IN (' . implode(',', $placeholders) . ')';
-        $limit = max($limit, 500); // bulk lookup — guarantee room for every pasted number regardless of the dropdown
+        $limit = PHP_INT_MAX; // unlimited bulk lookup — return every row for every pasted number
         $logQuery = 'mobiles=' . implode(',', $numbers);
         break;
 

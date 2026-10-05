@@ -40,7 +40,7 @@ require __DIR__ . '/includes/header.php';
     <form id="search-form" class="sp-form">
       <div class="sp-fields">
         <div class="field-group" data-for="mobile">
-          <input class="sp-input" type="text" name="mobile" placeholder="Enter mobile number… (paste multiple to bulk search)" id="mobile-input">
+          <input class="sp-input" type="text" name="mobile" placeholder="<?= (($_SESSION['role'] ?? '') === 'admin') ? 'Enter mobile number… (paste multiple to bulk search - no limit)' : 'Enter mobile number…' ?>" id="mobile-input">
         </div>
         <div class="field-group" data-for="name" style="display:none">
           <input class="sp-input" type="text" name="name_only" placeholder="Customer name…">
@@ -72,7 +72,7 @@ require __DIR__ . '/includes/header.php';
         </div>
         <div class="field-group" data-for="multi_mobile" style="display:none">
           <textarea class="sp-input sp-textarea" name="mobiles"
-            placeholder="Paste numbers — one per line or comma-separated (max 50)"></textarea>
+            placeholder="Paste numbers — one per line or comma-separated (no limit)"></textarea>
         </div>
       </div>
       <button type="submit" class="sp-btn" id="search-btn">
@@ -383,7 +383,10 @@ async function runSearch(p) {
   const btn = document.getElementById('search-btn');
   btn.innerHTML='<i class="bi bi-hourglass-split"></i> Searching…'; btn.disabled=true;
   try {
-    const res = await fetch('api/search.php?'+p);
+    // Bulk (unlimited) goes as POST - a long number list would overflow a GET URL.
+    const res = p.get('type') === 'multi_mobile'
+      ? await fetch('api/search.php', { method: 'POST', body: p })
+      : await fetch('api/search.php?'+p);
     if (res.status === 401) {
       // Session expired/replaced - a database-unavailable message here was
       // actively misleading (found 2026-08-04): 401 only ever means "not
