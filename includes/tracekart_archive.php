@@ -15,7 +15,7 @@ const TRACEKART_ARCHIVE_INDEX = TRACEKART_ARCHIVE_DIR . '/dedup_index.txt';
 
 // Best-effort archive: never let a D:-drive/permission problem break the
 // actual search response an agent is waiting on. $rows/$headers are
-// tracekartParseResults()'s own output shape.
+// tracekartBuildResults()'s own output shape.
 function archiveTracekartResults(array $headers, array $rows, string $searchedBy, string $mode, string $query): void {
     try {
         if (!$rows) return;

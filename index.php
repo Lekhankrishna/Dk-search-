@@ -15,7 +15,7 @@ require __DIR__ . '/includes/header.php';
      anything underneath it. -->
 <div class="confetti-container" id="confetti-container"></div>
 
-<h1 class="page-title-main" id="page-title">DK SEARCH</h1>
+<h1 class="page-title-main" id="page-title">DK Search</h1>
 
 <!-- ── Search Panel ── -->
 <div class="sp-wrap">
@@ -40,7 +40,7 @@ require __DIR__ . '/includes/header.php';
     <form id="search-form" class="sp-form">
       <div class="sp-fields">
         <div class="field-group" data-for="mobile">
-          <input class="sp-input" type="text" name="mobile" placeholder="<?= (($_SESSION['role'] ?? '') === 'admin') ? 'Enter mobile number… (paste multiple to bulk search - no limit)' : 'Enter mobile number…' ?>" id="mobile-input">
+          <input class="sp-input" type="text" name="mobile" placeholder="<?= isMainAdmin() ? 'Enter mobile number… (paste multiple to bulk search - no limit)' : 'Enter mobile number…' ?>" id="mobile-input">
         </div>
         <div class="field-group" data-for="name" style="display:none">
           <input class="sp-input" type="text" name="name_only" placeholder="Customer name…">
@@ -296,7 +296,7 @@ function renderPagination(info) {
 
 /* Page title reflects the selected state */
 function setPageTitle(state) {
-  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'DK SEARCH';
+  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'DK Search';
 }
 setPageTitle(activeState);
 

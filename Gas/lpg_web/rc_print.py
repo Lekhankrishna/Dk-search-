@@ -1,8 +1,9 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 
+import queue
+import sys
 import time
 
 # Reuses lpg_search.py's Chrome setup (headless + the anti-detection flags
@@ -10,7 +11,7 @@ import time
 # is a similar target (a login-gated site actively used by real staff, not a
 # throwaway scrape), so the same hardened driver setup is the safer default
 # here too rather than starting from a plain unconfigured Chrome instance.
-from lpg_search import _create_driver, _quit_driver_with_timeout
+from lpg_search import _create_driver, _quit_driver_with_timeout, _type_and_submit
 
 # =========================================================
 # LOGIN DETAILS - locateme.services (Firebase email/password login).
@@ -26,25 +27,73 @@ from config import LOCATEME_EMAIL as EMAIL, LOCATEME_PASSWORD as PASSWORD
 LOGIN_URL = "https://locateme.services/login"
 RC_PRINT_URL = "https://locateme.services/tools/rc-print"
 
-# Session-cookie caching (to skip a fresh login on every search) was tried
-# and reverted 2026-08-08: this site's auth is Firebase's default
-# indexedDBLocalPersistence (confirmed via a live driver.get_cookies() dump
-# coming back empty, then checking - the session actually lives in an
-# IndexedDB database named "firebaseLocalStorageDb", not a cookie at all).
-# Replicating that across Selenium sessions would mean snapshotting/
-# restoring an undocumented internal IndexedDB schema that Firebase could
-# change without notice - not a trade worth making for a partial speedup,
-# when the dominant cost (browser launch + locateme.services' own backend
-# lookup) isn't affected either way.
+# Session-cookie caching was tried and reverted 2026-08-08: this site's
+# auth is Firebase's indexedDBLocalPersistence (the session lives in an
+# IndexedDB database named "firebaseLocalStorageDb", not a cookie), and
+# copying that between Selenium sessions would mean depending on Firebase's
+# internal schema.
+#
+# Persistent Chrome profiles don't help either (tested 2026-10-03): the
+# session is gone as soon as the browser closes. What does work is keeping
+# a few already-logged-in browsers OPEN between searches - confirmed live
+# that several browsers can stay signed in to the same account at once, and
+# that an idle one is still signed in a minute later. Each search borrows an
+# idle warm browser (skipping ~1-3s start-up, ~8s login and ~2s shutdown)
+# or starts a fresh one when none is free; afterwards it's put back for the
+# next search, up to _MAX_IDLE kept open. A browser whose search raised an
+# error is closed rather than reused, since its page state is unknown.
+_MAX_IDLE = 3
+_idle_drivers = queue.LifoQueue()
+
+
+def _create_locateme_driver():
+    """A headless locateme.services browser - a warm, already-logged-in one
+    when available. Always hand it back via _release_locateme_driver()."""
+    while True:
+        try:
+            driver = _idle_drivers.get_nowait()
+        except queue.Empty:
+            return _create_driver(headless=True)
+        try:
+            driver.current_url  # still alive?
+            return driver
+        except Exception:
+            _quit_driver_with_timeout(driver)
+
+
+def _release_locateme_driver(driver):
+    # sys.exc_info() is set here when called from a `finally` while an
+    # exception is propagating - don't recycle a browser after a failure.
+    failed = sys.exc_info()[0] is not None
+    if not failed and _idle_drivers.qsize() < _MAX_IDLE:
+        try:
+            driver.get("about:blank")
+            _idle_drivers.put(driver)
+            return
+        except Exception:
+            pass
+    _quit_driver_with_timeout(driver)
 
 
 def _login(driver, wait):
 
     driver.get(LOGIN_URL)
 
-    email_input = wait.until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='email']"))
-    )
+    # A warm browser that's still signed in never shows the form - the site
+    # redirects it straight on to /dashboard. Whichever happens first
+    # decides: redirect = already logged in, form = log in now.
+    deadline = time.time() + 20
+    email_input = None
+    while time.time() < deadline:
+        if "/dashboard" in driver.current_url:
+            return
+        found = driver.find_elements(By.CSS_SELECTOR, "input[type='email']")
+        if found:
+            email_input = found[0]
+            break
+        time.sleep(0.25)
+    if email_input is None:
+        raise RuntimeError("locateme.services login page never loaded")
     email_input.clear()
     email_input.send_keys(EMAIL)
 
@@ -91,7 +140,7 @@ def run_rc_print(vehicle_number):
 
     driver = None
     try:
-        driver = _create_driver(headless=True)
+        driver = _create_locateme_driver()
         wait = WebDriverWait(driver, 20)
 
         _login(driver, wait)
@@ -101,9 +150,7 @@ def run_rc_print(vehicle_number):
         number_input = wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='ENTER VEHICLE NUMBER']"))
         )
-        number_input.clear()
-        number_input.send_keys(vehicle_number)
-        number_input.send_keys(Keys.RETURN)
+        _type_and_submit(number_input, vehicle_number)
 
         # PDF generation (their server action) isn't instant - poll for
         # either the result iframe or an error message rather than one long
@@ -127,4 +174,4 @@ def run_rc_print(vehicle_number):
 
     finally:
         if driver is not None:
-            _quit_driver_with_timeout(driver)
+            _release_locateme_driver(driver)

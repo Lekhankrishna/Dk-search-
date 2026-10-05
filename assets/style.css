@@ -84,61 +84,6 @@ html[data-theme="light"] .login-box{
   box-shadow:0 32px 64px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);
 }
 
-/* ── Dark theme override (toggled via html[data-theme="dark"]) ──────────────
-   Not the default - :root above already holds the site's normal look, and
-   the localStorage fallback in includes/footer.php/login.php's inline
-   theme-init script defaults to 'light' rather than 'dark' (2026-08-14),
-   specifically so this doesn't silently become every visitor's default the
-   moment it grows real colors. There's currently no in-UI control that
-   reaches this state (the toggle button was removed per explicit
-   instruction) - it's here for whoever already has 'dark' saved from
-   before, or a future toggle. Same green accent as light (--c-accent
-   isn't redefined here) for brand consistency across both. */
-html[data-theme="dark"] {
-  --c-bg:         #0a0f1a;
-  --c-surface:    #131b2b;
-  --c-surface-2:  #1b2436;
-  --c-border:     #263047;
-  --c-sidebar-bg: #0f1626;
-
-  --c-text:      #e8eaed;
-  --c-text-muted:#a0a8b8;
-  --c-text-soft: #6b7486;
-
-  --c-accent-light: rgba(46,158,63,.16);
-
-  --shadow-xs:  0 1px 2px rgba(0,0,0,.25);
-  --shadow-sm:  0 2px 8px rgba(0,0,0,.35);
-  --shadow-md:  0 4px 6px -1px rgba(0,0,0,.35),0 2px 4px -1px rgba(0,0,0,.25);
-  --shadow-lg:  0 10px 25px -5px rgba(0,0,0,.45),0 8px 10px -6px rgba(0,0,0,.3);
-  --shadow-xl:  0 20px 40px -10px rgba(0,0,0,.55);
-  --shadow-accent: 0 4px 18px rgba(46,158,63,.35);
-
-  color-scheme: dark;
-}
-html[data-theme="dark"] *{scrollbar-color:#3a4459 #141b2a;}
-html[data-theme="dark"] ::-webkit-scrollbar-track{background:#141b2a;}
-html[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#3a4459;}
-html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:#4a5570;}
-html[data-theme="dark"] code{color:#a0a8b8;}
-html[data-theme="dark"] .na{color:#6b7486;}
-html[data-theme="dark"] .pg-btn.pg-disabled,
-html[data-theme="dark"] .pg-btn[disabled]{color:#4a5570;}
-html[data-theme="dark"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
-html[data-theme="dark"] div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{color:#4a5570!important;}
-html[data-theme="dark"] body.login-page{
-  background:linear-gradient(160deg,#0a0f1a 0%,#131b2b 100%);
-}
-html[data-theme="dark"] body.login-page::before{
-  background-image:
-    radial-gradient(circle at 20% 20%,rgba(255,255,255,.03) 0%,transparent 50%),
-    radial-gradient(circle at 80% 80%,rgba(46,158,63,.14) 0%,transparent 50%);
-}
-html[data-theme="dark"] .login-box{
-  background:rgba(19,27,43,.97);
-  box-shadow:0 32px 64px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.06);
-}
-
 /* ── Theme toggle control ─────────────────────────────────────────────────── */
 button.sidebar__item{
   width:100%;background:none;border:none;border-left:3px solid transparent;
@@ -195,11 +140,13 @@ code{
   display:flex;align-items:center;gap:10px;color:var(--c-text);
   text-decoration:none;font-weight:800;font-size:15px;letter-spacing:-.2px;
 }
-/* DK Search circular mark (2026-08-19) - swapped from the wide banner
-   image to the same round mark used on the login page, for consistent
-   branding. Round source image, so border-radius:50% (not the banner's
-   8px) keeps it a clean circle instead of clipping corners off it. */
-.sidebar__brand-logo{height:38px;width:38px;display:block;border-radius:50%;}
+.sidebar__brand-icon{
+  width:44px;height:44px;flex-shrink:0;
+  background:var(--c-accent-light);
+  border:1px solid var(--c-border);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  color:var(--c-accent);
+}
 .sidebar__hamburger{
   background:none;border:none;color:var(--c-text-muted);font-size:18px;
   cursor:pointer;padding:4px;line-height:1;border-radius:6px;transition:background var(--t),color var(--t);
@@ -216,8 +163,20 @@ code{
   border-left:3px solid transparent;
   transition:background var(--t),color var(--t),border-color var(--t);cursor:pointer;
 }
+/* Bold only for the Advanced Search link, per explicit instruction - every
+   other sidebar item stays at the normal 500 weight above. */
+.sidebar__item[href="advanced_search.php"]{font-weight:700;}
 .sidebar__item:hover{background:var(--c-surface-2);color:var(--c-text);}
 .sidebar__item.active{background:var(--c-accent-light);color:var(--c-accent);border-left-color:var(--c-accent);font-weight:700;}
+.sidebar__item--dark{color:#1f2937;font-weight:700;}
+/* Advanced Search / All Gas keep their dark bold label even while they're
+   the current page (per explicit instruction) - the light-green active
+   background and left border still mark which page is open. */
+.sidebar__item--pinned-dark,
+.sidebar__item--pinned-dark.active{color:#1f2937;font-weight:700;}
+.sidebar__item--pinned-green,
+.sidebar__item--pinned-green.active{color:#1f7a2e;font-weight:700;}
+.sidebar__item--dark:hover{background:var(--c-surface-2);color:#1f2937;}
 .sidebar__avatar{
   width:28px;height:28px;border-radius:50%;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
@@ -287,6 +246,7 @@ code{
   font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
 }
 .topbar__role--admin{background:#f59e0b;color:#ffffff;}
+.topbar__role--sub_admin{background:var(--c-accent);color:#ffffff;}
 .topbar__role--agent{background:var(--c-success-bg);color:var(--c-success);}
 
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
@@ -955,7 +915,10 @@ div.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover{
 .expiry-form input[type="date"]:focus,
 .expiry-form input[type="time"]:focus{border-color:var(--c-accent);}
 table.agents-table td{vertical-align:middle;padding:12px 14px;}
-table.agents-table thead th{white-space:nowrap;}
+/* Agent list headings: smaller, and long names wrap onto two lines so the
+   columns stay narrow (2026-10-05, per explicit instruction). */
+table.agents-table thead th{white-space:normal;font-size:9.5px;letter-spacing:.2px;line-height:1.25;
+  padding:7px 8px;min-width:64px;max-width:96px;vertical-align:middle;}
 
 /* ── Login page ──────────────────────────────────────────────────────────── */
 body.login-page{
@@ -979,19 +942,14 @@ body.login-page::before{
   animation:fadeUp .5s ease both;
 }
 .login-logo{text-align:center;margin-bottom:32px;}
-/* DK Search circular mark (2026-08-19, replacing the wide banner logo used
-   here before) - round, so a radar-ping pulse (the green ring repeatedly
-   expanding + fading outward) reads naturally as a "scanning/locating"
-   animation rather than looking like a loading spinner stuck mid-load. */
-.login-logo__mark{
-  width:120px;height:120px;border-radius:50%;margin-bottom:18px;
-  animation:dk-mark-pulse 2.4s cubic-bezier(0.4,0,0.6,1) infinite;
+.login-logo__icon{
+  width:100px;height:100px;
+  background:linear-gradient(135deg,var(--c-accent-hover),var(--c-accent));
+  border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:43px;color:#ffffff;margin-bottom:14px;
+  box-shadow:0 10px 28px rgba(46,158,63,.4);
 }
-@keyframes dk-mark-pulse{
-  0%   {box-shadow:0 0 0 0 rgba(46,158,63,.5);}
-  70%  {box-shadow:0 0 0 22px rgba(46,158,63,0);}
-  100% {box-shadow:0 0 0 0 rgba(46,158,63,0);}
-}
+.login-logo__title{font-size:24px;font-weight:800;color:var(--c-text);margin:0 0 5px;letter-spacing:-.3px;}
 .login-logo__sub{margin:0;color:var(--c-text-muted);font-size:13px;}
 .login-box .form-group{margin-bottom:16px;}
 .login-box .form-label{
@@ -1004,6 +962,11 @@ body.login-page::before{
   display:flex;align-items:center;gap:8px;
   background:var(--c-danger-bg);border:1px solid var(--c-danger-border);
   color:var(--c-danger);border-radius:var(--r-md);padding:10px 14px;font-size:13px;margin-bottom:20px;
+}
+.login-notice{
+  display:flex;align-items:center;gap:8px;
+  background:var(--c-success-bg);border:1px solid var(--c-success-border);
+  color:var(--c-success);border-radius:var(--r-md);padding:10px 14px;font-size:13px;margin-bottom:20px;
 }
 
 /* ── Import page ─────────────────────────────────────────────────────────── */
@@ -1148,6 +1111,7 @@ table.results-table.pan-results-table tbody td{
   overflow:visible;text-overflow:clip;
 }
 .pan-result-state{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:var(--c-text-muted);font-size:13px;}
+.pan-not-found{background:var(--c-surface,#fff);border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:16px;color:#f87171;font-weight:600;}
 .pan-spinner{width:18px;height:18px;border:2px solid var(--c-border);border-top-color:var(--c-accent);border-radius:50%;animation:pan-spin .7s linear infinite;}
 .pan-spinner.small{display:inline-block;width:13px;height:13px;vertical-align:-2px;border-color:rgba(255,255,255,.35);border-top-color:#fff;}
 @keyframes pan-spin{to{transform:rotate(360deg);}}

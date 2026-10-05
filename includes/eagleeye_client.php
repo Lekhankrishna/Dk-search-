@@ -21,6 +21,49 @@ function eagleEyeCookieJarPath(): string {
     return sys_get_temp_dir() . '/eagleeye_cookies.txt';
 }
 
+// Confirmed live 2026-09-19 - the real bug behind "Advance Pan India"
+// silently returning "No results found" almost instantly: eagleEyeLogin()/
+// eagleEyeSearch() make several sequential requests (fetch login page,
+// submit login, sometimes clear a session-limit and retry, fetch the
+// search page, submit the search) - EACH on its own curl_init() handle,
+// previously each independently pointed at the same file via
+// CURLOPT_COOKIEJAR/CURLOPT_COOKIEFILE. Traced with CURLINFO_COOKIELIST at
+// each step: every individual handle received and held the right cookies
+// right up to its own close - but a handle opened and closed EARLIER in
+// the sequence could still overwrite the jar file with ITS OWN (older,
+// session-less) cookie snapshot AFTER a LATER handle had already written
+// the correct, fully-logged-in one, because each handle's jar-write is
+// blind to what any other handle wrote in between - there is no
+// coordination between them at all, just N independent
+// read-file-then-later-write-file cycles racing each other. The result:
+// eagleEyeLogin() genuinely succeeds (a real 302, a real session cookie
+// received - confirmed via CURLINFO_COOKIELIST right after that request)
+// but the jar that's actually left on disk once the whole flow finishes can
+// still be the stale, pre-login one, so the very next request in the same
+// flow (or the next search entirely) looks logged-out again with no error,
+// no hint - just consistently zero results.
+//
+// Fixed by giving every handle in one request the SAME in-memory cookie
+// store (a curl_share_init() with CURL_LOCK_DATA_COOKIE) instead of each
+// syncing independently through a file - a cookie set on one handle is
+// immediately visible to the next, with no read/write race between them at
+// all, since there's only one shared store instead of N independent
+// per-handle copies. The file is still what carries a session BETWEEN
+// separate PHP requests (this app's PHP built-in server starts a fresh
+// process per request, so nothing in-memory survives between searches) -
+// loaded into the share once up front (CURLOPT_COOKIEFILE, first handle
+// only needs to trigger it once since the share is what actually holds the
+// state after that) and saved back once at the very end of the whole flow
+// via eagleEyeSaveCookieJar(), not on every individual handle's close.
+function eagleEyeShareHandle() {
+    static $share = null;
+    if ($share === null) {
+        $share = curl_share_init();
+        curl_share_setopt($share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+    }
+    return $share;
+}
+
 // No CurlHandle type hint on the return - curl_init() returns a plain
 // `resource` under PHP 7.4 (what this server actually runs), not the
 // CurlHandle object PHP 8 introduced.
@@ -28,7 +71,11 @@ function eagleEyeCurlHandle() {
     $ch = curl_init();
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_COOKIEJAR => eagleEyeCookieJarPath(),
+        CURLOPT_SHARE => eagleEyeShareHandle(),
+        // Still points at the jar file - this is what actually loads the
+        // file's contents into the shared in-memory cookie store the FIRST
+        // time any handle touches cookies in this process (a no-op on every
+        // handle after that, since the share already has the state).
         CURLOPT_COOKIEFILE => eagleEyeCookieJarPath(),
         // Followed manually rather than via CURLOPT_FOLLOWLOCATION - a
         // redirect back to /accounts/login/ is exactly how we detect "not
@@ -44,9 +91,23 @@ function eagleEyeCurlHandle() {
         // instead - already on disk from XAMPP's own phpMyAdmin/Composer
         // install (the standard Mozilla root list) - fixes it for this
         // client without touching shared PHP config.
-        CURLOPT_CAINFO => 'C:\\xampp\\phpMyAdmin\\vendor\\composer\\ca-bundle\\res\\cacert.pem',
+        CURLOPT_CAINFO => __DIR__ . '/../config/cacert.pem',
     ]);
     return $ch;
+}
+
+// Flushes the SHARED cookie store (see eagleEyeShareHandle() above) to disk
+// on every close - safe to do on every single handle now, unlike before:
+// since every handle reads from and writes to the same in-memory store
+// rather than an independent per-handle copy, there's no longer any
+// "earlier handle's stale snapshot overwrites a later handle's correct one"
+// race to avoid by trying to flush only once at some carefully-chosen
+// "last" point. Whichever handle closes last always has the same complete,
+// up-to-date cookie set as every other.
+function eagleEyeCurlClose($ch): void {
+    curl_setopt($ch, CURLOPT_COOKIEJAR, eagleEyeCookieJarPath());
+    curl_setopt($ch, CURLOPT_COOKIELIST, 'FLUSH');
+    curl_close($ch);
 }
 
 function eagleEyeExtractCsrf(string $html): ?string {
@@ -67,7 +128,7 @@ function eagleEyeSubmitLoginForm(string $csrf) {
     ]);
     $html = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    eagleEyeCurlClose($ch);
     return [$httpCode, $html];
 }
 
@@ -96,7 +157,7 @@ function eagleEyeClearSessionLimit(string $html): void {
             CURLOPT_REFERER => EAGLEEYE_BASE . '/accounts/login/',
         ]);
         curl_exec($ch);
-        curl_close($ch);
+        eagleEyeCurlClose($ch);
     }
 }
 
@@ -104,7 +165,7 @@ function eagleEyeLogin(): bool {
     $ch = eagleEyeCurlHandle();
     curl_setopt($ch, CURLOPT_URL, EAGLEEYE_BASE . '/accounts/login/');
     $html = curl_exec($ch);
-    curl_close($ch);
+    eagleEyeCurlClose($ch);
     if ($html === false) return false;
 
     $csrf = eagleEyeExtractCsrf($html);
@@ -127,7 +188,7 @@ function eagleEyeLogin(): bool {
     $ch = eagleEyeCurlHandle();
     curl_setopt($ch, CURLOPT_URL, EAGLEEYE_BASE . '/accounts/login/');
     $html2 = curl_exec($ch);
-    curl_close($ch);
+    eagleEyeCurlClose($ch);
     if ($html2 === false) return false;
 
     $csrf2 = eagleEyeExtractCsrf($html2);
@@ -144,7 +205,7 @@ function eagleEyeFetchSearchPage(): ?string {
     curl_setopt($ch, CURLOPT_URL, EAGLEEYE_BASE . '/search/');
     $html = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    eagleEyeCurlClose($ch);
     if ($html === false) return null;
     if ($httpCode >= 300 && $httpCode < 400) return null;
     return $html;
@@ -228,7 +289,7 @@ function eagleEyeSearch(array $params): array {
     ]);
     $html = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    eagleEyeCurlClose($ch);
 
     if ($html === false) {
         throw new RuntimeException('Could not reach theeagleeye.biz.');

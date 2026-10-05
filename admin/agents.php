@@ -1,11 +1,65 @@
 <?php
 require __DIR__ . '/../includes/auth.php';
-requireAdmin('../login.php');
+requireAdminOrSubAdmin('../login.php');
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/tracing2_tools.php';
 
 $message     = '';
 $messageType = 'success';
+
+// sub_admin can reach this page to create/manage agent accounts, but is
+// capped at SUB_ADMIN_MAX_AGENTS accounts created BY that specific
+// sub-admin (created_by), can only ever create/see plain 'agent' accounts
+// (never admin/sub_admin - no privilege escalation via this form, and no
+// visibility into anyone else's accounts), and can never act on an
+// existing admin/sub_admin account. A real admin is unrestricted as before.
+$actingIsSubAdmin = isSubAdmin();
+const SUB_ADMIN_MAX_AGENTS = 30;
+
+// A sub-admin can only ever delegate tool access they themselves were
+// granted by a real admin (2026-10-02, per explicit instruction, found
+// live: the UI was showing every tool as grantable regardless of what the
+// sub-admin's own account actually had) - their own row's access flags are
+// the ceiling for every agent they create or edit, enforced both here
+// server-side (see $subAdminCanGrant() below) and in the form markup
+// itself (an option the sub-admin can't delegate isn't rendered at all,
+// not just disabled).
+$SUB_ADMIN_GRANTABLE_FIELDS = [
+    'lpg_search_access', 'ecommerce_access', 'tracing2_access', 'rc_print_access', 'hp_gas_access',
+    'indane_gas_access', 'indane_gas_pro_access', 'tata_play_access',
+    'aadhaar_to_ration_access', 'eagle_eye_access', 'pan_india_access',
+    'pan_india_pro_access', 'advanced_search_access', 'all_gas_access',
+    'mobile_to_address_access', 'mobile_address_adv_access',
+    'indian_gas_api_access', 'hp_gas_api_access', 'aadhaar_family_api_access',
+    'bharat_gas_api_access',
+];
+$subAdminOwnAccess = [];
+$subAdminOwnTracing2Tools = null;
+if ($actingIsSubAdmin) {
+    $ownStmt = $pdo->prepare(
+        'SELECT ' . implode(', ', $SUB_ADMIN_GRANTABLE_FIELDS) . ', tracing2_tools FROM users WHERE id = :id'
+    );
+    $ownStmt->execute(['id' => $_SESSION['user_id']]);
+    $ownRow = $ownStmt->fetch() ?: [];
+    foreach ($SUB_ADMIN_GRANTABLE_FIELDS as $field) {
+        $subAdminOwnAccess[$field] = (bool) ($ownRow[$field] ?? false);
+    }
+    // NULL means "every tool allowed" (see hasTracing2ToolAccess()'s own
+    // comment) - mirrored here so a sub-admin who was never explicitly
+    // restricted can still delegate any Tracing 2.0 tool, not accidentally
+    // locked out of all of them.
+    $subAdminOwnTracing2Tools = $ownRow['tracing2_tools'] !== null
+        ? (json_decode((string) $ownRow['tracing2_tools'], true) ?: [])
+        : null;
+}
+
+// true for a real admin (unrestricted) or when the acting sub-admin's own
+// account has this access field granted - the single check every
+// create/edit path and every form checkbox below goes through.
+function subAdminCanGrant(string $field): bool {
+    global $actingIsSubAdmin, $subAdminOwnAccess;
+    return !$actingIsSubAdmin || !empty($subAdminOwnAccess[$field]);
+}
 
 // Shared by both the create form and edit modal's Tracing 2.0 tool
 // checklist - never trust raw POST values as tool slugs directly.
@@ -47,12 +101,33 @@ function tracing2ToolCreditsFromPost(array $allowedSlugs): string {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
+    // A sub-admin can't act on an existing admin/sub_admin account through
+    // ANY of the actions below (edit, the per-tool toggles, expiry, delete,
+    // etc.) - checked once here, before the per-action branches, rather
+    // than duplicated in each one. 'create' has no target id yet so it's
+    // exempt (its own role-escalation guard is inline below); every other
+    // action takes a plain 'id' POST field.
+    if ($action !== 'create' && $actingIsSubAdmin) {
+        $targetId = (int) ($_POST['id'] ?? 0);
+        $targetRoleStmt = $pdo->prepare('SELECT role FROM users WHERE id = :id');
+        $targetRoleStmt->execute(['id' => $targetId]);
+        $targetRole = $targetRoleStmt->fetchColumn();
+        if (in_array($targetRole, ['admin', 'sub_admin'], true)) {
+            http_response_code(403);
+            die('Access denied: sub-admins cannot act on admin or sub-admin accounts.');
+        }
+    }
+
     if ($action === 'create') {
         $username  = trim($_POST['username']  ?? '');
         $fullName  = trim($_POST['full_name'] ?? '');
         $mobileNo  = trim($_POST['mobile_no'] ?? '');
         $password  = $_POST['password']       ?? '';
-        $role      = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
+        $submittedRole = $_POST['role'] ?? 'agent';
+        $role = in_array($submittedRole, ['admin', 'sub_admin'], true) ? $submittedRole : 'agent';
+        // A sub-admin can never create anything but a plain agent - checked
+        // server-side, not just by hiding the role selector in the form.
+        if ($actingIsSubAdmin) $role = 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
         $tracing2Access = isset($_POST['tracing2_access']) ? 1 : 0;
         $tracing2MonthlyLimit = min(65535, max(0, (int) ($_POST['tracing2_monthly_limit'] ?? 1000)));
@@ -64,27 +139,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hpGasMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5)));
         $indaneGasAccess = isset($_POST['indane_gas_access']) ? 1 : 0;
         $indaneGasMonthlyLimit = min(65535, max(0, (int) ($_POST['indane_gas_monthly_limit'] ?? 5)));
+        $indaneGasProAccess = isset($_POST['indane_gas_pro_access']) ? 1 : 0;
         $tataPlayAccess = isset($_POST['tata_play_access']) ? 1 : 0;
         $tataPlayMonthlyLimit = min(65535, max(0, (int) ($_POST['tata_play_monthly_limit'] ?? 5)));
+        $aadhaarToRationAccess = isset($_POST['aadhaar_to_ration_access']) ? 1 : 0;
+        $aadhaarToRationMonthlyLimit = min(65535, max(0, (int) ($_POST['aadhaar_to_ration_monthly_limit'] ?? 5)));
         $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
         $eagleEyeMonthlyLimit = min(65535, max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5)));
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $panIndiaProAccess = isset($_POST['pan_india_pro_access']) ? 1 : 0;
         $panIndiaProMonthlyLimit = min(65535, max(0, (int) ($_POST['pan_india_pro_monthly_limit'] ?? 5)));
         $advancedSearchAccess = isset($_POST['advanced_search_access']) ? 1 : 0;
+        $ecommerceAccess = isset($_POST['ecommerce_access']) ? 1 : 0;
+        $mobileToAddressAccess = isset($_POST['mobile_to_address_access']) ? 1 : 0;
+        $mobileToAddressMonthlyLimit = min(65535, max(0, (int) ($_POST['mobile_to_address_monthly_limit'] ?? 50)));
+        $mobileAddressAdvAccess = isset($_POST['mobile_address_adv_access']) ? 1 : 0;
+        $mobileAddressAdvMonthlyLimit = min(65535, max(0, (int) ($_POST['mobile_address_adv_monthly_limit'] ?? 50)));
         $advancedSearchMonthlyLimit = min(65535, max(0, (int) ($_POST['advanced_search_monthly_limit'] ?? 5)));
+        $allGasAccess = isset($_POST['all_gas_access']) ? 1 : 0;
+        $allGasIndaneLimit = min(65535, max(0, (int) ($_POST['all_gas_indane_monthly_limit'] ?? 50)));
+        $allGasBharatLimit = min(65535, max(0, (int) ($_POST['all_gas_bharat_monthly_limit'] ?? 50)));
+        $allGasHpLimit     = min(65535, max(0, (int) ($_POST['all_gas_hp_monthly_limit'] ?? 50)));
+        $indianGasApiAccess = isset($_POST['indian_gas_api_access']) ? 1 : 0;
+        $indianGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['indian_gas_api_monthly_limit'] ?? 50)));
+        $hpGasApiAccess = isset($_POST['hp_gas_api_access']) ? 1 : 0;
+        $hpGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_api_monthly_limit'] ?? 50)));
+        $aadhaarFamilyApiAccess = isset($_POST['aadhaar_family_api_access']) ? 1 : 0;
+        $aadhaarFamilyApiMonthlyLimit = min(65535, max(0, (int) ($_POST['aadhaar_family_api_monthly_limit'] ?? 50)));
+        $bharatGasApiAccess = isset($_POST['bharat_gas_api_access']) ? 1 : 0;
+        $bharatGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['bharat_gas_api_monthly_limit'] ?? 50)));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
+        $allowedIps = trim((string) ($_POST['allowed_ips'] ?? ''));
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
         $expiresAtSql = $expiresDate !== '' ? "$expiresDate $expiresTime:00" : null;
 
+        // A sub-admin can only grant a tool they themselves were granted -
+        // forced here regardless of what was submitted (the form itself
+        // doesn't even render a checkbox for a tool they lack, but this is
+        // the real enforcement, not just hiding the option).
+        if ($actingIsSubAdmin) {
+            if (!$subAdminOwnAccess['lpg_search_access'])    $lpgAccess = 0;
+            if (!$subAdminOwnAccess['tracing2_access'])      $tracing2Access = 0;
+            if (!$subAdminOwnAccess['rc_print_access'])      $rcPrintAccess = 0;
+            if (!$subAdminOwnAccess['hp_gas_access'])        $hpGasAccess = 0;
+            if (!$subAdminOwnAccess['indane_gas_access'])    $indaneGasAccess = 0;
+            if (!$subAdminOwnAccess['indane_gas_pro_access'])$indaneGasProAccess = 0;
+            if (!$subAdminOwnAccess['tata_play_access'])     $tataPlayAccess = 0;
+            if (!$subAdminOwnAccess['aadhaar_to_ration_access']) $aadhaarToRationAccess = 0;
+            if (!$subAdminOwnAccess['eagle_eye_access'])     $eagleEyeAccess = 0;
+            if (!$subAdminOwnAccess['pan_india_access'])     $panIndiaAccess = 0;
+            if (!$subAdminOwnAccess['pan_india_pro_access']) $panIndiaProAccess = 0;
+            if (!$subAdminOwnAccess['advanced_search_access']) $advancedSearchAccess = 0;
+            if (!$subAdminOwnAccess['ecommerce_access'])     $ecommerceAccess = 0;
+            if (!$subAdminOwnAccess['mobile_to_address_access']) $mobileToAddressAccess = 0;
+            if (!$subAdminOwnAccess['mobile_address_adv_access']) $mobileAddressAdvAccess = 0;
+            if (!$subAdminOwnAccess['all_gas_access'])       $allGasAccess = 0;
+            if (!$subAdminOwnAccess['indian_gas_api_access']) $indianGasApiAccess = 0;
+            if (!$subAdminOwnAccess['hp_gas_api_access']) $hpGasApiAccess = 0;
+            if (!$subAdminOwnAccess['aadhaar_family_api_access']) $aadhaarFamilyApiAccess = 0;
+            if (!$subAdminOwnAccess['bharat_gas_api_access']) $bharatGasApiAccess = 0;
+            // Tracing 2.0's own per-tool selection is capped to the
+            // intersection with what the sub-admin can themselves use -
+            // $subAdminOwnTracing2Tools === null means "every tool", so no
+            // extra filtering needed in that case.
+            if ($subAdminOwnTracing2Tools !== null) {
+                $submittedTools = json_decode($tracing2Tools, true) ?: [];
+                $tracing2Tools = json_encode(array_values(array_intersect($submittedTools, $subAdminOwnTracing2Tools)));
+            }
+        }
+
+        $subAdminAgentCount = 0;
+        if ($actingIsSubAdmin) {
+            $capStmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE created_by = :me');
+            $capStmt->execute(['me' => $_SESSION['user_id']]);
+            $subAdminAgentCount = (int) $capStmt->fetchColumn();
+        }
+
         if ($username === '' || $fullName === '' || strlen($password) < 6) {
             $message     = 'Username, full name, and a password of at least 6 characters are required.';
             $messageType = 'danger';
+        } elseif ($actingIsSubAdmin && $subAdminAgentCount >= SUB_ADMIN_MAX_AGENTS) {
+            $message     = 'You have reached your limit of ' . SUB_ADMIN_MAX_AGENTS . ' created agents. Contact the main admin to create more.';
+            $messageType = 'danger';
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, lpg_search_access, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, tata_play_access, tata_play_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at)
-                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :lpg_access, :tracing2_access, :tracing2_monthly_limit, :tracing2_tools, :tracing2_tool_credits, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :indane_gas_access, :indane_gas_monthly_limit, :tata_play_access, :tata_play_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :advanced_search_access, :advanced_search_monthly_limit, :max_sessions, :expires_at)'
+                'INSERT INTO users (username, password_hash, full_name, mobile_no, role, created_by, lpg_search_access, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, indane_gas_pro_access, tata_play_access, tata_play_monthly_limit, aadhaar_to_ration_access, aadhaar_to_ration_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, ecommerce_access, mobile_to_address_access, mobile_to_address_monthly_limit, mobile_address_adv_access, mobile_address_adv_monthly_limit, advanced_search_monthly_limit, all_gas_access, all_gas_indane_monthly_limit, all_gas_bharat_monthly_limit, all_gas_hp_monthly_limit, indian_gas_api_access, indian_gas_api_monthly_limit, hp_gas_api_access, hp_gas_api_monthly_limit, aadhaar_family_api_access, aadhaar_family_api_monthly_limit, bharat_gas_api_access, bharat_gas_api_monthly_limit, max_concurrent_sessions, allowed_ips, expires_at)
+                 VALUES (:username, :hash, :full_name, :mobile_no, :role, :created_by, :lpg_access, :tracing2_access, :tracing2_monthly_limit, :tracing2_tools, :tracing2_tool_credits, :rc_print_access, :rc_print_monthly_limit, :hp_gas_access, :hp_gas_monthly_limit, :indane_gas_access, :indane_gas_monthly_limit, :indane_gas_pro_access, :tata_play_access, :tata_play_monthly_limit, :aadhaar_to_ration_access, :aadhaar_to_ration_monthly_limit, :eagle_eye_access, :eagle_eye_monthly_limit, :pan_india_access, :pan_india_pro_access, :pan_india_pro_monthly_limit, :advanced_search_access, :ecommerce_access, :mobile_to_address_access, :mobile_to_address_monthly_limit, :mobile_address_adv_access, :mobile_address_adv_monthly_limit, :advanced_search_monthly_limit, :all_gas_access, :all_gas_indane_monthly_limit, :all_gas_bharat_monthly_limit, :all_gas_hp_monthly_limit, :indian_gas_api_access, :indian_gas_api_monthly_limit, :hp_gas_api_access, :hp_gas_api_monthly_limit, :aadhaar_family_api_access, :aadhaar_family_api_monthly_limit, :bharat_gas_api_access, :bharat_gas_api_monthly_limit, :max_sessions, :allowed_ips, :expires_at)'
             );
             try {
                 $stmt->execute([
@@ -93,6 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $fullName,
                     'mobile_no' => $mobileNo !== '' ? $mobileNo : null,
                     'role'      => $role,
+                    'created_by'=> $_SESSION['user_id'],
                     'lpg_access'=> $lpgAccess,
                     'tracing2_access' => $tracing2Access,
                     'tracing2_monthly_limit' => $tracing2MonthlyLimit,
@@ -104,16 +246,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
                     'indane_gas_access' => $indaneGasAccess,
                     'indane_gas_monthly_limit' => $indaneGasMonthlyLimit,
+                    'indane_gas_pro_access' => $indaneGasProAccess,
                     'tata_play_access' => $tataPlayAccess,
                     'tata_play_monthly_limit' => $tataPlayMonthlyLimit,
+                    'aadhaar_to_ration_access' => $aadhaarToRationAccess,
+                    'aadhaar_to_ration_monthly_limit' => $aadhaarToRationMonthlyLimit,
                     'eagle_eye_access' => $eagleEyeAccess,
                     'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                     'pan_india_access' => $panIndiaAccess,
                     'pan_india_pro_access' => $panIndiaProAccess,
                     'pan_india_pro_monthly_limit' => $panIndiaProMonthlyLimit,
                     'advanced_search_access' => $advancedSearchAccess,
+                    'ecommerce_access' => $ecommerceAccess,
+                    'mobile_to_address_access' => $mobileToAddressAccess,
+                    'mobile_to_address_monthly_limit' => $mobileToAddressMonthlyLimit,
+                    'mobile_address_adv_access' => $mobileAddressAdvAccess,
+                    'mobile_address_adv_monthly_limit' => $mobileAddressAdvMonthlyLimit,
                     'advanced_search_monthly_limit' => $advancedSearchMonthlyLimit,
+                    'all_gas_access' => $allGasAccess,
+                    'all_gas_indane_monthly_limit' => $allGasIndaneLimit,
+                    'all_gas_bharat_monthly_limit' => $allGasBharatLimit,
+                    'all_gas_hp_monthly_limit' => $allGasHpLimit,
+                    'indian_gas_api_access' => $indianGasApiAccess,
+                    'indian_gas_api_monthly_limit' => $indianGasApiMonthlyLimit,
+                    'hp_gas_api_access' => $hpGasApiAccess,
+                    'hp_gas_api_monthly_limit' => $hpGasApiMonthlyLimit,
+                    'aadhaar_family_api_access' => $aadhaarFamilyApiAccess,
+                    'aadhaar_family_api_monthly_limit' => $aadhaarFamilyApiMonthlyLimit,
+                    'bharat_gas_api_access' => $bharatGasApiAccess,
+                    'bharat_gas_api_monthly_limit' => $bharatGasApiMonthlyLimit,
                     'max_sessions' => $maxSessions,
+                    'allowed_ips' => $allowedIps !== '' ? $allowedIps : null,
                     'expires_at'=> $expiresAtSql,
                 ]);
                 $message = "Account <strong>" . htmlspecialchars($username) . "</strong> created successfully.";
@@ -134,7 +297,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = trim($_POST['username']  ?? '');
         $fullName = trim($_POST['full_name'] ?? '');
         $mobileNo = trim($_POST['mobile_no'] ?? '');
-        $role     = ($_POST['role'] ?? 'agent') === 'admin' ? 'admin' : 'agent';
+        $submittedRole = $_POST['role'] ?? 'agent';
+        $role = in_array($submittedRole, ['admin', 'sub_admin'], true) ? $submittedRole : 'agent';
+        // A sub-admin can never promote an account to admin/sub_admin via
+        // edit either - the cross-account guard above already stops them
+        // touching an EXISTING admin/sub_admin, but without this, editing
+        // one of their OWN agents could still escalate that agent's role.
+        if ($actingIsSubAdmin) $role = 'agent';
         $lpgAccess = isset($_POST['lpg_search_access']) ? 1 : 0;
         $tracing2Access = isset($_POST['tracing2_access']) ? 1 : 0;
         $tracing2MonthlyLimit = min(65535, max(0, (int) ($_POST['tracing2_monthly_limit'] ?? 1000)));
@@ -146,20 +315,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hpGasMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_monthly_limit'] ?? 5)));
         $indaneGasAccess = isset($_POST['indane_gas_access']) ? 1 : 0;
         $indaneGasMonthlyLimit = min(65535, max(0, (int) ($_POST['indane_gas_monthly_limit'] ?? 5)));
+        $indaneGasProAccess = isset($_POST['indane_gas_pro_access']) ? 1 : 0;
         $tataPlayAccess = isset($_POST['tata_play_access']) ? 1 : 0;
         $tataPlayMonthlyLimit = min(65535, max(0, (int) ($_POST['tata_play_monthly_limit'] ?? 5)));
+        $aadhaarToRationAccess = isset($_POST['aadhaar_to_ration_access']) ? 1 : 0;
+        $aadhaarToRationMonthlyLimit = min(65535, max(0, (int) ($_POST['aadhaar_to_ration_monthly_limit'] ?? 5)));
         $eagleEyeAccess = isset($_POST['eagle_eye_access']) ? 1 : 0;
         $eagleEyeMonthlyLimit = min(65535, max(0, (int) ($_POST['eagle_eye_monthly_limit'] ?? 5)));
         $panIndiaAccess = isset($_POST['pan_india_access']) ? 1 : 0;
         $panIndiaProAccess = isset($_POST['pan_india_pro_access']) ? 1 : 0;
         $panIndiaProMonthlyLimit = min(65535, max(0, (int) ($_POST['pan_india_pro_monthly_limit'] ?? 5)));
         $advancedSearchAccess = isset($_POST['advanced_search_access']) ? 1 : 0;
+        $ecommerceAccess = isset($_POST['ecommerce_access']) ? 1 : 0;
+        $mobileToAddressAccess = isset($_POST['mobile_to_address_access']) ? 1 : 0;
+        $mobileToAddressMonthlyLimit = min(65535, max(0, (int) ($_POST['mobile_to_address_monthly_limit'] ?? 50)));
+        $mobileAddressAdvAccess = isset($_POST['mobile_address_adv_access']) ? 1 : 0;
+        $mobileAddressAdvMonthlyLimit = min(65535, max(0, (int) ($_POST['mobile_address_adv_monthly_limit'] ?? 50)));
         $advancedSearchMonthlyLimit = min(65535, max(0, (int) ($_POST['advanced_search_monthly_limit'] ?? 5)));
+        $allGasAccess = isset($_POST['all_gas_access']) ? 1 : 0;
+        $allGasIndaneLimit = min(65535, max(0, (int) ($_POST['all_gas_indane_monthly_limit'] ?? 50)));
+        $allGasBharatLimit = min(65535, max(0, (int) ($_POST['all_gas_bharat_monthly_limit'] ?? 50)));
+        $allGasHpLimit     = min(65535, max(0, (int) ($_POST['all_gas_hp_monthly_limit'] ?? 50)));
+        $indianGasApiAccess = isset($_POST['indian_gas_api_access']) ? 1 : 0;
+        $indianGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['indian_gas_api_monthly_limit'] ?? 50)));
+        $hpGasApiAccess = isset($_POST['hp_gas_api_access']) ? 1 : 0;
+        $hpGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['hp_gas_api_monthly_limit'] ?? 50)));
+        $aadhaarFamilyApiAccess = isset($_POST['aadhaar_family_api_access']) ? 1 : 0;
+        $aadhaarFamilyApiMonthlyLimit = min(65535, max(0, (int) ($_POST['aadhaar_family_api_monthly_limit'] ?? 50)));
+        $bharatGasApiAccess = isset($_POST['bharat_gas_api_access']) ? 1 : 0;
+        $bharatGasApiMonthlyLimit = min(65535, max(0, (int) ($_POST['bharat_gas_api_monthly_limit'] ?? 50)));
         $maxSessions = max(1, (int) ($_POST['max_concurrent_sessions'] ?? 1));
+        $allowedIps = trim((string) ($_POST['allowed_ips'] ?? ''));
         $newPassword  = $_POST['new_password'] ?? '';
         $expiresDate  = trim($_POST['expires_date'] ?? '');
         $expiresTime  = trim($_POST['expires_time'] ?? '') ?: '00:00';
         $expiresAtSql = $expiresDate !== '' ? "$expiresDate $expiresTime:00" : null;
+
+        // Same ceiling as the create path above - a sub-admin editing one
+        // of their own agents can't grant (or keep granted) a tool beyond
+        // their own current access either.
+        if ($actingIsSubAdmin) {
+            if (!$subAdminOwnAccess['lpg_search_access'])    $lpgAccess = 0;
+            if (!$subAdminOwnAccess['tracing2_access'])      $tracing2Access = 0;
+            if (!$subAdminOwnAccess['rc_print_access'])      $rcPrintAccess = 0;
+            if (!$subAdminOwnAccess['hp_gas_access'])        $hpGasAccess = 0;
+            if (!$subAdminOwnAccess['indane_gas_access'])    $indaneGasAccess = 0;
+            if (!$subAdminOwnAccess['indane_gas_pro_access'])$indaneGasProAccess = 0;
+            if (!$subAdminOwnAccess['tata_play_access'])     $tataPlayAccess = 0;
+            if (!$subAdminOwnAccess['aadhaar_to_ration_access']) $aadhaarToRationAccess = 0;
+            if (!$subAdminOwnAccess['eagle_eye_access'])     $eagleEyeAccess = 0;
+            if (!$subAdminOwnAccess['pan_india_access'])     $panIndiaAccess = 0;
+            if (!$subAdminOwnAccess['pan_india_pro_access']) $panIndiaProAccess = 0;
+            if (!$subAdminOwnAccess['advanced_search_access']) $advancedSearchAccess = 0;
+            if (!$subAdminOwnAccess['ecommerce_access'])     $ecommerceAccess = 0;
+            if (!$subAdminOwnAccess['mobile_to_address_access']) $mobileToAddressAccess = 0;
+            if (!$subAdminOwnAccess['mobile_address_adv_access']) $mobileAddressAdvAccess = 0;
+            if (!$subAdminOwnAccess['all_gas_access'])       $allGasAccess = 0;
+            if (!$subAdminOwnAccess['indian_gas_api_access']) $indianGasApiAccess = 0;
+            if (!$subAdminOwnAccess['hp_gas_api_access']) $hpGasApiAccess = 0;
+            if (!$subAdminOwnAccess['aadhaar_family_api_access']) $aadhaarFamilyApiAccess = 0;
+            if (!$subAdminOwnAccess['bharat_gas_api_access']) $bharatGasApiAccess = 0;
+            if ($subAdminOwnTracing2Tools !== null) {
+                $submittedTools = json_decode($tracing2Tools, true) ?: [];
+                $tracing2Tools = json_encode(array_values(array_intersect($submittedTools, $subAdminOwnTracing2Tools)));
+            }
+        }
 
         if ($username === '' || $fullName === '') {
             $message     = 'Username and full name are required.';
@@ -168,7 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message     = 'New password must be at least 6 characters (or leave it blank to keep the current one).';
             $messageType = 'danger';
         } else {
-            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, tracing2_access = :tracing2_access, tracing2_monthly_limit = :tracing2_monthly_limit, tracing2_tools = :tracing2_tools, tracing2_tool_credits = :tracing2_tool_credits, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, indane_gas_access = :indane_gas_access, indane_gas_monthly_limit = :indane_gas_monthly_limit, tata_play_access = :tata_play_access, tata_play_monthly_limit = :tata_play_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, advanced_search_access = :advanced_search_access, advanced_search_monthly_limit = :advanced_search_monthly_limit, max_concurrent_sessions = :max_sessions, expires_at = :expires_at';
+            $sql = 'UPDATE users SET username = :username, full_name = :full_name, mobile_no = :mobile_no, role = :role, lpg_search_access = :lpg_access, tracing2_access = :tracing2_access, tracing2_monthly_limit = :tracing2_monthly_limit, tracing2_tools = :tracing2_tools, tracing2_tool_credits = :tracing2_tool_credits, rc_print_access = :rc_print_access, rc_print_monthly_limit = :rc_print_monthly_limit, hp_gas_access = :hp_gas_access, hp_gas_monthly_limit = :hp_gas_monthly_limit, indane_gas_access = :indane_gas_access, indane_gas_monthly_limit = :indane_gas_monthly_limit, indane_gas_pro_access = :indane_gas_pro_access, tata_play_access = :tata_play_access, tata_play_monthly_limit = :tata_play_monthly_limit, aadhaar_to_ration_access = :aadhaar_to_ration_access, aadhaar_to_ration_monthly_limit = :aadhaar_to_ration_monthly_limit, eagle_eye_access = :eagle_eye_access, eagle_eye_monthly_limit = :eagle_eye_monthly_limit, pan_india_access = :pan_india_access, pan_india_pro_access = :pan_india_pro_access, pan_india_pro_monthly_limit = :pan_india_pro_monthly_limit, advanced_search_access = :advanced_search_access, ecommerce_access = :ecommerce_access, mobile_to_address_access = :mobile_to_address_access, mobile_to_address_monthly_limit = :mobile_to_address_monthly_limit, mobile_address_adv_access = :mobile_address_adv_access, mobile_address_adv_monthly_limit = :mobile_address_adv_monthly_limit, advanced_search_monthly_limit = :advanced_search_monthly_limit, all_gas_access = :all_gas_access, all_gas_indane_monthly_limit = :all_gas_indane_monthly_limit, all_gas_bharat_monthly_limit = :all_gas_bharat_monthly_limit, all_gas_hp_monthly_limit = :all_gas_hp_monthly_limit, indian_gas_api_access = :indian_gas_api_access, indian_gas_api_monthly_limit = :indian_gas_api_monthly_limit, hp_gas_api_access = :hp_gas_api_access, hp_gas_api_monthly_limit = :hp_gas_api_monthly_limit, aadhaar_family_api_access = :aadhaar_family_api_access, aadhaar_family_api_monthly_limit = :aadhaar_family_api_monthly_limit, bharat_gas_api_access = :bharat_gas_api_access, bharat_gas_api_monthly_limit = :bharat_gas_api_monthly_limit, max_concurrent_sessions = :max_sessions, allowed_ips = :allowed_ips, expires_at = :expires_at';
             $params = [
                 'username'  => $username,
                 'full_name' => $fullName,
@@ -185,16 +405,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'hp_gas_monthly_limit' => $hpGasMonthlyLimit,
                 'indane_gas_access' => $indaneGasAccess,
                 'indane_gas_monthly_limit' => $indaneGasMonthlyLimit,
+                'indane_gas_pro_access' => $indaneGasProAccess,
                 'tata_play_access' => $tataPlayAccess,
                 'tata_play_monthly_limit' => $tataPlayMonthlyLimit,
+                'aadhaar_to_ration_access' => $aadhaarToRationAccess,
+                'aadhaar_to_ration_monthly_limit' => $aadhaarToRationMonthlyLimit,
                 'eagle_eye_access' => $eagleEyeAccess,
                 'eagle_eye_monthly_limit' => $eagleEyeMonthlyLimit,
                 'pan_india_access' => $panIndiaAccess,
                 'pan_india_pro_access' => $panIndiaProAccess,
                 'pan_india_pro_monthly_limit' => $panIndiaProMonthlyLimit,
                 'advanced_search_access' => $advancedSearchAccess,
+                    'ecommerce_access' => $ecommerceAccess,
+                    'mobile_to_address_access' => $mobileToAddressAccess,
+                    'mobile_to_address_monthly_limit' => $mobileToAddressMonthlyLimit,
+                    'mobile_address_adv_access' => $mobileAddressAdvAccess,
+                    'mobile_address_adv_monthly_limit' => $mobileAddressAdvMonthlyLimit,
                 'advanced_search_monthly_limit' => $advancedSearchMonthlyLimit,
+                'all_gas_access' => $allGasAccess,
+                    'all_gas_indane_monthly_limit' => $allGasIndaneLimit,
+                    'all_gas_bharat_monthly_limit' => $allGasBharatLimit,
+                    'all_gas_hp_monthly_limit' => $allGasHpLimit,
+                    'indian_gas_api_access' => $indianGasApiAccess,
+                    'indian_gas_api_monthly_limit' => $indianGasApiMonthlyLimit,
+                    'hp_gas_api_access' => $hpGasApiAccess,
+                    'hp_gas_api_monthly_limit' => $hpGasApiMonthlyLimit,
+                    'aadhaar_family_api_access' => $aadhaarFamilyApiAccess,
+                    'aadhaar_family_api_monthly_limit' => $aadhaarFamilyApiMonthlyLimit,
+                    'bharat_gas_api_access' => $bharatGasApiAccess,
+                    'bharat_gas_api_monthly_limit' => $bharatGasApiMonthlyLimit,
                 'max_sessions' => $maxSessions,
+                'allowed_ips' => $allowedIps !== '' ? $allowedIps : null,
                 'expires_at'=> $expiresAtSql,
                 'id'        => $id,
             ];
@@ -254,6 +495,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int) ($_POST['id'] ?? 0);
         $stmt = $pdo->prepare('UPDATE users SET advanced_search_access = 1 - advanced_search_access WHERE id = :id');
         $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_mobile_address_adv') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET mobile_address_adv_access = 1 - mobile_address_adv_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_mobile_to_address') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET mobile_to_address_access = 1 - mobile_to_address_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_ecommerce') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET ecommerce_access = 1 - ecommerce_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_all_gas') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET all_gas_access = 1 - all_gas_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_indian_gas_api') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET indian_gas_api_access = 1 - indian_gas_api_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_hp_gas_api') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET hp_gas_api_access = 1 - hp_gas_api_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_aadhaar_family_api') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET aadhaar_family_api_access = 1 - aadhaar_family_api_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    } elseif ($action === 'toggle_bharat_gas_api') {
+        $id = (int) ($_POST['id'] ?? 0);
+        $stmt = $pdo->prepare('UPDATE users SET bharat_gas_api_access = 1 - bharat_gas_api_access WHERE id = :id');
+        $stmt->execute(['id' => $id]);
     } elseif ($action === 'regenerate_lpg_key') {
         // Invalidates that agent's current bookmarklet immediately — the next
         // visit to lpg_search.php lazily generates a fresh key (see
@@ -289,24 +562,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$users = $pdo->query(
-    'SELECT id, username, full_name, mobile_no, role, is_active, lpg_search_access, lpg_bookmarklet_key, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, tata_play_access, tata_play_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, advanced_search_monthly_limit, max_concurrent_sessions, expires_at, created_at, last_login_at FROM users ORDER BY created_at DESC'
-)->fetchAll();
+// A sub-admin only ever sees the accounts THEY created - a real admin
+// still sees everyone. Every stat below, the table, and the CSV export all
+// flow from this one already-scoped $users list, so nothing downstream
+// needs its own per-row created_by check.
+$usersSelectSql = 'SELECT id, username, full_name, mobile_no, role, created_by, is_active, lpg_search_access, lpg_bookmarklet_key, tracing2_access, tracing2_monthly_limit, tracing2_tools, tracing2_tool_credits, rc_print_access, rc_print_monthly_limit, hp_gas_access, hp_gas_monthly_limit, indane_gas_access, indane_gas_monthly_limit, indane_gas_pro_access, tata_play_access, tata_play_monthly_limit, aadhaar_to_ration_access, aadhaar_to_ration_monthly_limit, eagle_eye_access, eagle_eye_monthly_limit, pan_india_access, pan_india_pro_access, pan_india_pro_monthly_limit, advanced_search_access, ecommerce_access, mobile_to_address_access, mobile_to_address_monthly_limit, mobile_address_adv_access, mobile_address_adv_monthly_limit, advanced_search_monthly_limit, all_gas_access, all_gas_indane_monthly_limit, all_gas_bharat_monthly_limit, all_gas_hp_monthly_limit, indian_gas_api_access, indian_gas_api_monthly_limit, hp_gas_api_access, hp_gas_api_monthly_limit, aadhaar_family_api_access, aadhaar_family_api_monthly_limit, bharat_gas_api_access, bharat_gas_api_monthly_limit, max_concurrent_sessions, allowed_ips, expires_at, created_at, last_login_at FROM users';
+if ($actingIsSubAdmin) {
+    $usersStmt = $pdo->prepare($usersSelectSql . ' WHERE created_by = :me ORDER BY created_at DESC');
+    $usersStmt->execute(['me' => $_SESSION['user_id']]);
+    $users = $usersStmt->fetchAll();
+} else {
+    $users = $pdo->query($usersSelectSql . ' ORDER BY created_at DESC')->fetchAll();
+}
 
 // Summary stats for the admin view. "Logged In" counts users who have ever
 // signed in at least once (last_login_at is set) — the users table only
 // stores the MOST RECENT login timestamp per user, not a running count of
 // every login event, so this is "how many accounts have been used", not a
 // cumulative login-event total (that data was never recorded).
-$totalUsers   = count($users);
-$totalAdmins  = 0;
-$totalAgents  = 0;
+$totalUsers    = count($users);
+$totalAdmins   = 0;
+$totalSubAdmins = 0;
+$totalAgents   = 0;
 $loggedInCount = 0;
 $expiredCount  = 0;
 foreach ($users as $u) {
-    if ($u['role'] === 'admin') $totalAdmins++; else $totalAgents++;
+    if ($u['role'] === 'admin') $totalAdmins++;
+    elseif ($u['role'] === 'sub_admin') $totalSubAdmins++;
+    else $totalAgents++;
     if ($u['last_login_at'] !== null) $loggedInCount++;
     if ($u['expires_at'] !== null && strtotime($u['expires_at']) <= time()) $expiredCount++;
+}
+// $users IS already just this sub-admin's own accounts (see above), so the
+// quota display is simply how many of those exist - no per-row match needed.
+$mySubAdminAgentCount = $actingIsSubAdmin ? $totalUsers : 0;
+
+// Per-sub-admin creation breakdown, main admin only - lets a real admin see
+// how many agents each sub-admin has created. A LEFT JOIN (not counting
+// $users, which is already scoped away for a sub-admin actor) so a
+// sub-admin who hasn't created anyone yet still shows up here with 0, not
+// silently missing.
+$subAdminBreakdown = [];
+if (!$actingIsSubAdmin) {
+    $subAdminBreakdown = $pdo->query(
+        "SELECT sa.id, sa.username, sa.full_name, sa.is_active,
+                COUNT(a.id) AS agents_created
+         FROM users sa
+         LEFT JOIN users a ON a.created_by = sa.id
+         WHERE sa.role = 'sub_admin'
+         GROUP BY sa.id, sa.username, sa.full_name, sa.is_active
+         ORDER BY agents_created DESC, sa.username ASC"
+    )->fetchAll();
+}
+
+// Resolves each row's created_by id to a display name in the accounts
+// table, without an N+1 query per row.
+$creatorNames = [];
+$creatorIds = array_values(array_unique(array_filter(array_column($users, 'created_by'))));
+if ($creatorIds) {
+    $placeholders = implode(',', array_fill(0, count($creatorIds), '?'));
+    $creatorStmt = $pdo->prepare("SELECT id, username FROM users WHERE id IN ($placeholders)");
+    $creatorStmt->execute($creatorIds);
+    foreach ($creatorStmt->fetchAll() as $row) {
+        $creatorNames[(int) $row['id']] = $row['username'];
+    }
 }
 
 $basePath = '../';
@@ -344,6 +663,24 @@ require __DIR__ . '/../includes/header.php';
   .acf-feature span{flex:1;}
   .acf-feature .acf-limit{display:flex;align-items:center;gap:4px;flex:0 0 auto;font-size:11px;font-weight:500;color:var(--c-text-soft);}
   .acf-feature:has(input:checked) .acf-limit{color:var(--c-accent-hover);}
+  /* All Gas: three per-provider limits - the tile takes its own full row so
+     they sit side by side without squeezing (2026-10-04). */
+  .acf-feature.acf-feature--wide{grid-column:1 / -1;flex-wrap:wrap;}
+  .acf-feature .acf-limit.acf-limit--multi{gap:14px;flex-wrap:wrap;}
+  .acf-limit--multi .acf-limit-item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;flex:0 0 auto;}
+  /* All Gas Advanced: one full-row tile holding its five tabs, each with its
+     own checkbox + monthly limit (2026-10-04, per explicit instruction). */
+  .acf-group{grid-column:1 / -1;border:1px solid var(--c-border);border-radius:10px;background:var(--c-surface,#fff);padding:10px 14px 12px;}
+  .acf-group-title{font-weight:700;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:6px;color:var(--c-text,#1f2937);}
+  .acf-group-title i{color:var(--c-accent);}
+  .acf-group-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;}
+  .acf-group-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--c-border);border-radius:8px;cursor:pointer;transition:all 150ms;}
+  .acf-group-item:hover{border-color:var(--c-accent);}
+  .acf-group-item:has(input:checked){background:var(--c-accent-light);border-color:var(--c-accent);color:var(--c-accent-hover);font-weight:600;}
+  .acf-group-item input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--c-accent);cursor:pointer;}
+  .acf-group-item .acf-group-name{flex:1;}
+  .acf-group-item .acf-limit{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--c-text-soft);}
+  .acf-group-item .acf-limit input{width:44px;padding:3px 5px;border:1px solid var(--c-border);border-radius:6px;font-size:12px;}
   .acf-feature .acf-limit input{width:44px;padding:3px 5px;border:1px solid var(--c-border);border-radius:6px;
     background:var(--c-surface);color:var(--c-text);font-size:11.5px;text-align:center;font-weight:600;}
   .acf-inline-field{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--c-text);white-space:nowrap;}
@@ -401,9 +738,17 @@ require __DIR__ . '/../includes/header.php';
   }
 </style>
 
-<div class="page-header">
-  <h1 class="page-title"><i class="bi bi-people-fill"></i> Manage Agents &amp; Admins</h1>
-  <p class="page-subtitle">Create, enable/disable, or remove CRM portal accounts.</p>
+<div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
+  <div>
+    <h1 class="page-title"><i class="bi bi-people-fill"></i> Manage Agents &amp; Admins</h1>
+    <p class="page-subtitle">Create, enable/disable, or remove DK Search accounts.</p>
+  </div>
+  <?php if ($actingIsSubAdmin): ?>
+    <span class="badge <?= $mySubAdminAgentCount >= SUB_ADMIN_MAX_AGENTS ? 'badge-danger' : 'badge-neutral' ?>"
+          style="margin-left:auto" title="Agents you've created, out of your limit">
+      <?= $mySubAdminAgentCount ?>/<?= SUB_ADMIN_MAX_AGENTS ?> agents created
+    </span>
+  <?php endif; ?>
 </div>
 
 <div class="sp-stats mb-4">
@@ -415,6 +760,12 @@ require __DIR__ . '/../includes/header.php';
     <span><?= $totalAdmins ?></span>
     <label>Admins</label>
   </div>
+  <?php if (!$actingIsSubAdmin): ?>
+  <div class="sp-stat">
+    <span><?= $totalSubAdmins ?></span>
+    <label>Sub Admins</label>
+  </div>
+  <?php endif; ?>
   <div class="sp-stat">
     <span><?= $totalAgents ?></span>
     <label>Agents</label>
@@ -428,6 +779,39 @@ require __DIR__ . '/../includes/header.php';
     <label>Expired</label>
   </div>
 </div>
+
+<?php if (!$actingIsSubAdmin && $subAdminBreakdown): ?>
+<div class="card mb-4">
+  <div class="card-header">
+    <i class="bi bi-diagram-3-fill" style="color:var(--c-accent)"></i>
+    <span class="card-title">Sub-Admin Agent Creation</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Sub Admin</th>
+          <th>Status</th>
+          <th>Agents Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($subAdminBreakdown as $sa): ?>
+          <tr>
+            <td><strong><?= htmlspecialchars($sa['username']) ?></strong> <span class="text-sm text-muted"><?= htmlspecialchars($sa['full_name']) ?></span></td>
+            <td><span class="badge <?= $sa['is_active'] ? 'badge-success' : 'badge-neutral' ?>"><?= $sa['is_active'] ? 'Active' : 'Disabled' ?></span></td>
+            <td>
+              <span class="badge <?= (int) $sa['agents_created'] >= SUB_ADMIN_MAX_AGENTS ? 'badge-danger' : 'badge-neutral' ?>">
+                <?= (int) $sa['agents_created'] ?>/<?= SUB_ADMIN_MAX_AGENTS ?>
+              </span>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($message): ?>
   <div class="notice notice-<?= htmlspecialchars($messageType) ?>">
@@ -455,29 +839,54 @@ require __DIR__ . '/../includes/header.php';
           <i class="bi bi-eye-fill" id="create-password-toggle-icon"></i>
         </button>
       </div>
-      <select name="role" style="min-width:110px">
-        <option value="agent">Agent</option>
-        <option value="admin">Admin</option>
-      </select>
+      <?php if ($actingIsSubAdmin): ?>
+        <!-- A sub-admin can only ever create plain agents - no role picker
+             shown at all (server-side already forces role='agent'
+             regardless of what's submitted, so this is just not misleading
+             the UI into implying a choice that doesn't exist). -->
+        <input type="hidden" name="role" value="agent">
+      <?php else: ?>
+        <select name="role" style="min-width:110px">
+          <option value="agent">Agent</option>
+          <option value="sub_admin">Sub Admin</option>
+          <option value="admin">Admin</option>
+        </select>
+      <?php endif; ?>
     </div>
 
     <div class="acf-section-label"><i class="bi bi-shield-lock-fill"></i> Feature Access</div>
     <div class="acf-feature-grid">
+      <?php if (subAdminCanGrant('ecommerce_access')): ?>
       <label class="acf-feature">
+        <input type="checkbox" name="ecommerce_access" value="1">
+        <span>E Commerce</span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('lpg_search_access')): ?>
+      <?php /* LPG Search and Tracing 2.0 hidden from Admin > Agents per
+         explicit instruction (2026-10-04) - kept in the form (not removed)
+         so saving an agent never silently changes their existing access. */ ?>
+      <label class="acf-feature" style="display:none">
         <input type="checkbox" name="lpg_search_access" value="1">
         <span>LPG Search</span>
       </label>
-      <label class="acf-feature">
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('tracing2_access')): ?>
+      <label class="acf-feature" style="display:none">
         <input type="checkbox" name="tracing2_access" id="create-tracing2_access" value="1">
         <span>Tracing 2.0</span>
         <span class="acf-limit" title="Total locateme.services credits this agent can spend per calendar month, across whichever tools are checked below - a cheap 1-credit search and an expensive 150-credit search count differently against this budget, not 1-for-1. Ignored for admins.">
           <input type="number" name="tracing2_monthly_limit" value="1000" min="0" max="65535" onclick="event.stopPropagation()">cr/mo
         </span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('pan_india_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="pan_india_access" value="1">
         <span>Pan India</span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('rc_print_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="rc_print_access" value="1">
         <span>RC Print</span>
@@ -485,42 +894,102 @@ require __DIR__ . '/../includes/header.php';
           <input type="number" name="rc_print_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
         </span>
       </label>
-      <label class="acf-feature">
-        <input type="checkbox" name="hp_gas_access" value="1">
-        <span>HP Gas Search</span>
-        <span class="acf-limit" title="How many HP Gas searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
-          <input type="number" name="hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
-        </span>
-      </label>
-      <label class="acf-feature">
-        <input type="checkbox" name="indane_gas_access" value="1">
-        <span>Indane Gas</span>
-        <span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins.">
-          <input type="number" name="indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
-        </span>
-      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('tata_play_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="tata_play_access" value="1">
         <span>TATA SKY DTH</span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('aadhaar_to_ration_access')): ?>
+      <label class="acf-feature">
+        <input type="checkbox" name="aadhaar_to_ration_access" value="1">
+        <span>Aadhaar to Family Members</span>
+        <span class="acf-limit" title="How many Aadhaar to Family Members searches this agent can run per calendar month - each one spends real credits on the shared locateme.services account. Ignored for admins.">
+          <input type="number" name="aadhaar_to_ration_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('aadhaar_family_api_access')): ?>
+      <label class="acf-feature">
+        <input type="checkbox" name="aadhaar_family_api_access" value="1">
+        <span>Aadhaar to Family Advanced</span>
+        <span class="acf-limit" title="Searches per calendar month - every search counts, found or not. Ignored for admins.">
+          <input type="number" name="aadhaar_family_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('eagle_eye_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="eagle_eye_access" value="1">
         <span>Advance Pan India</span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('pan_india_pro_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="pan_india_pro_access" value="1">
         <span>Night Out</span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('advanced_search_access')): ?>
       <label class="acf-feature">
         <input type="checkbox" name="advanced_search_access" value="1">
         <span>Advanced Search</span>
       </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('mobile_to_address_access')): ?>
+      <label class="acf-feature">
+        <input type="checkbox" name="mobile_to_address_access" value="1">
+        <span>Mobile to Delivery Address</span>
+        <span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins.">
+          <input type="number" name="mobile_to_address_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('mobile_address_adv_access')): ?>
+      <label class="acf-feature">
+        <input type="checkbox" name="mobile_address_adv_access" value="1">
+        <span>Mobile to Delivery Address Advanced</span>
+        <span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins.">
+          <input type="number" name="mobile_address_adv_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+        </span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('all_gas_access')): ?>
+      <label class="acf-feature acf-feature--wide">
+        <input type="checkbox" name="all_gas_access" value="1">
+        <span>All Gas</span>
+        <span class="acf-limit acf-limit--multi" style="display:none" title="Found searches per calendar month on All Gas, per provider. Ignored for admins.">
+          <span class="acf-limit-item">Indane <input type="number" name="all_gas_indane_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()"></span>
+          <span class="acf-limit-item">Bharat <input type="number" name="all_gas_bharat_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()"></span>
+          <span class="acf-limit-item">HP <input type="number" name="all_gas_hp_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo</span>
+        </span>
+      </label>
+      <?php endif; ?>
+      <?php if (subAdminCanGrant('indane_gas_pro_access')): ?>
+      <label class="acf-feature">
+        <input type="checkbox" name="indane_gas_pro_access" value="1">
+        <span>Indane Gas Pro</span>
+      </label>
+      <?php endif; ?>
+      <div class="acf-group">
+        <div class="acf-group-title"><i class="bi bi-fire"></i> All Gas Advanced</div>
+        <div class="acf-group-items">
+          <label class="acf-group-item"<?= subAdminCanGrant('indane_gas_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="indane_gas_access" value="1"><span class="acf-group-name">Indian Gas</span><span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins."> <input type="number" name="indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+          <label class="acf-group-item"<?= subAdminCanGrant('indian_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="indian_gas_api_access" value="1"><span class="acf-group-name">Indian Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="indian_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+          <label class="acf-group-item"<?= subAdminCanGrant('hp_gas_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="hp_gas_access" value="1"><span class="acf-group-name">HP Gas</span><span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins."> <input type="number" name="hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+          <label class="acf-group-item"<?= subAdminCanGrant('hp_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="hp_gas_api_access" value="1"><span class="acf-group-name">HP Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="hp_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+          <label class="acf-group-item"<?= subAdminCanGrant('bharat_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="bharat_gas_api_access" value="1"><span class="acf-group-name">Bharat Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="bharat_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+        </div>
+      </div>
     </div>
 
-    <div class="acf-tracing2-tools" id="create-tracing2-tools-panel">
+    <?php if (subAdminCanGrant('tracing2_access')): ?>
+    <div class="acf-tracing2-tools" id="create-tracing2-tools-panel" style="display:none">
       <div class="acf-tracing2-tools-label"><i class="bi bi-geo-alt-fill"></i> Tracing 2.0 — Select Tools</div>
       <div class="acf-tools-grid">
         <?php foreach (tracing2SelectableTools() as $slug => $t): ?>
+          <?php if ($actingIsSubAdmin && $subAdminOwnTracing2Tools !== null && !in_array($slug, $subAdminOwnTracing2Tools, true)) continue; ?>
           <label class="acf-tool-check">
             <input type="checkbox" name="tracing2_tools[]" value="<?= htmlspecialchars($slug) ?>" checked>
             <span title="<?= htmlspecialchars($t['label']) ?>"><?= htmlspecialchars($t['label']) ?></span>
@@ -532,8 +1001,11 @@ require __DIR__ . '/../includes/header.php';
         <?php endforeach; ?>
       </div>
     </div>
+    <?php endif; ?>
 
     <div class="acf-row">
+      <input type="text" name="allowed_ips" placeholder="Allowed IPs (comma-separated, blank = any)"
+             title="Restrict this account to signing in only from these exact IP addresses - comma or newline separated, no CIDR ranges. Leave blank to allow any network." style="min-width:260px">
       <label class="acf-inline-field"
              title="How many devices can be signed into this account at the same time. Logging in beyond this limit signs out whichever device has been idle longest.">
         Max Logins
@@ -562,6 +1034,7 @@ require __DIR__ . '/../includes/header.php';
       <select id="account-role-filter" class="dt-select">
         <option value="">All Roles</option>
         <option value="admin">Admin</option>
+        <option value="sub_admin">Sub Admin</option>
         <option value="agent">Agent</option>
       </select>
       <div class="dt-search-box">
@@ -574,21 +1047,34 @@ require __DIR__ . '/../includes/header.php';
     <table class="results-table agents-table" id="accounts-table">
       <thead>
         <tr>
-          <th>ID</th>
+          <th style="display:none">ID</th><?php /* hidden per explicit instruction (2026-10-05) */ ?>
           <th>Username</th>
           <th>Mobile Number</th>
           <th>Role</th>
+          <th style="display:none">Created By</th><?php /* hidden per explicit instruction (2026-10-05) */ ?>
           <th>Status</th>
-          <th>LPG</th>
-          <th>Tracing 2.0</th>
+          <th>E Commerce</th>
+          <?php /* LPG / Tracing 2.0 columns hidden per explicit instruction (2026-10-05), not removed. */ ?>
+          <th style="display:none">LPG</th>
+          <th style="display:none">Tracing 2.0</th>
           <th>Pan India</th>
           <th>RC Print</th>
-          <th>HP Gas</th>
-          <th>Indane Gas</th>
+          <?php /* HP Gas / Indane Gas columns hidden per explicit instruction (2026-10-05) - both are set in the All Gas Advanced tile. */ ?>
+          <th style="display:none">HP Gas</th>
+          <th style="display:none">Indane Gas</th>
+          <th>Indane Gas Pro</th>
           <th>TATA SKY DTH</th>
+          <th>Aadhaar to Family Members</th>
+          <th>Aadhaar to Family Advanced</th>
           <th>Adv. Pan India</th>
           <th>Night Out</th>
           <th>Advanced Search</th>
+          <th>Mobile to Delivery Address</th>
+          <th>Mobile to Delivery Address Advanced</th>
+<th>All Gas</th>
+          <th>Indian Gas Advanced</th>
+          <th>HP Gas Advanced</th>
+          <th>Bharat Gas Advanced</th>
           <th>Set Expiry</th>
           <th>Actions</th>
         </tr>
@@ -606,21 +1092,31 @@ require __DIR__ . '/../includes/header.php';
       ?>
         <tr data-role="<?= htmlspecialchars($u['role']) ?>"
             data-search="<?= htmlspecialchars(strtolower($u['username'] . ' ' . $u['full_name'] . ' ' . ($u['mobile_no'] ?? ''))) ?>">
-          <td class="text-sm text-muted">#<?= (int) $u['id'] ?></td>
+          <td class="text-sm text-muted" style="display:none">#<?= (int) $u['id'] ?></td>
           <td><strong><?= htmlspecialchars($u['username']) ?></strong></td>
           <td class="text-sm text-muted"><?= htmlspecialchars($u['mobile_no'] ?? '') ?: '<span class="na">—</span>' ?></td>
           <td>
-            <span class="badge <?= $u['role'] === 'admin' ? 'badge-warning' : 'badge-info' ?>">
-              <?= ucfirst($u['role']) ?>
+            <span class="badge <?= $u['role'] === 'admin' ? 'badge-warning' : ($u['role'] === 'sub_admin' ? 'badge-primary' : 'badge-info') ?>">
+              <?= $u['role'] === 'sub_admin' ? 'Sub Admin' : ucfirst($u['role']) ?>
             </span>
+          </td>
+          <td class="text-sm text-muted" style="display:none">
+            <?= $u['created_by'] !== null && isset($creatorNames[(int) $u['created_by']])
+                ? htmlspecialchars($creatorNames[(int) $u['created_by']])
+                : '<span class="na">—</span>' ?>
           </td>
           <td><span class="badge <?= $statusClass ?>"><?= $statusLabel ?></span></td>
           <td>
+            <span class="badge <?= $u['ecommerce_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['ecommerce_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+          </td>
+          <td style="display:none">
             <span class="badge <?= $u['lpg_search_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['lpg_search_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
           </td>
-          <td>
+          <td style="display:none">
             <span class="badge <?= $u['tracing2_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['tracing2_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
@@ -645,7 +1141,7 @@ require __DIR__ . '/../includes/header.php';
               <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['rc_print_monthly_limit'] ?>/month</div>
             <?php endif; ?>
           </td>
-          <td>
+          <td style="display:none">
             <span class="badge <?= $u['hp_gas_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['hp_gas_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
@@ -653,7 +1149,7 @@ require __DIR__ . '/../includes/header.php';
               <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['hp_gas_monthly_limit'] ?>/month</div>
             <?php endif; ?>
           </td>
-          <td>
+          <td style="display:none">
             <span class="badge <?= $u['indane_gas_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['indane_gas_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
@@ -662,35 +1158,92 @@ require __DIR__ . '/../includes/header.php';
             <?php endif; ?>
           </td>
           <td>
+            <span class="badge <?= $u['indane_gas_pro_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['indane_gas_pro_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+          </td>
+          <td>
             <span class="badge <?= $u['tata_play_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['tata_play_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
-            <?php if ($u['tata_play_access'] && $u['role'] !== 'admin'): ?>
-              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['tata_play_monthly_limit'] ?>/month</div>
+          </td>
+          <td>
+            <span class="badge <?= $u['aadhaar_to_ration_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['aadhaar_to_ration_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['aadhaar_to_ration_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['aadhaar_to_ration_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['aadhaar_family_api_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['aadhaar_family_api_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['aadhaar_family_api_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['aadhaar_family_api_monthly_limit'] ?>/month</div>
             <?php endif; ?>
           </td>
           <td>
             <span class="badge <?= $u['eagle_eye_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['eagle_eye_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
-            <?php if ($u['eagle_eye_access'] && $u['role'] !== 'admin'): ?>
-              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['eagle_eye_monthly_limit'] ?>/month</div>
-            <?php endif; ?>
           </td>
           <td>
             <span class="badge <?= $u['pan_india_pro_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['pan_india_pro_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
-            <?php if ($u['pan_india_pro_access'] && $u['role'] !== 'admin'): ?>
-              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['pan_india_pro_monthly_limit'] ?>/month</div>
-            <?php endif; ?>
           </td>
           <td>
             <span class="badge <?= $u['advanced_search_access'] ? 'badge-success' : 'badge-neutral' ?>">
               <?= $u['advanced_search_access'] ? 'Granted' : 'Not Granted' ?>
             </span>
-            <?php if ($u['advanced_search_access'] && $u['role'] !== 'admin'): ?>
-              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['advanced_search_monthly_limit'] ?>/month</div>
+          </td>
+          <td>
+            <span class="badge <?= $u['mobile_to_address_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['mobile_to_address_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['mobile_to_address_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['mobile_to_address_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['mobile_address_adv_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['mobile_address_adv_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['mobile_address_adv_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['mobile_address_adv_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['all_gas_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['all_gas_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['all_gas_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px">Indane <?= (int) $u['all_gas_indane_monthly_limit'] ?> &middot; Bharat <?= (int) $u['all_gas_bharat_monthly_limit'] ?> &middot; HP <?= (int) $u['all_gas_hp_monthly_limit'] ?> /month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['indian_gas_api_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['indian_gas_api_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['indian_gas_api_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['indian_gas_api_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['hp_gas_api_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['hp_gas_api_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['hp_gas_api_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['hp_gas_api_monthly_limit'] ?>/month</div>
+            <?php endif; ?>
+          </td>
+          <td>
+            <span class="badge <?= $u['bharat_gas_api_access'] ? 'badge-success' : 'badge-neutral' ?>">
+              <?= $u['bharat_gas_api_access'] ? 'Granted' : 'Not Granted' ?>
+            </span>
+            <?php if ($u['bharat_gas_api_access'] && $u['role'] !== 'admin'): ?>
+              <div class="text-sm text-muted" style="margin-top:2px"><?= (int) $u['bharat_gas_api_monthly_limit'] ?>/month</div>
             <?php endif; ?>
           </td>
           <td>
@@ -715,7 +1268,7 @@ require __DIR__ . '/../includes/header.php';
           </td>
           <td class="action-cell">
             <button type="button" class="btn btn-sm btn-secondary"
-                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['tracing2_access'] ?>, <?= (int) $u['tracing2_monthly_limit'] ?>, <?= htmlspecialchars(json_encode($u['tracing2_tools'] !== null ? (json_decode($u['tracing2_tools'], true) ?: []) : null), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['tracing2_tool_credits'] !== null ? (json_decode($u['tracing2_tool_credits'], true) ?: []) : null), ENT_QUOTES) ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['indane_gas_access'] ?>, <?= (int) $u['indane_gas_monthly_limit'] ?>, <?= (int) $u['tata_play_access'] ?>, <?= (int) $u['tata_play_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['advanced_search_access'] ?>, <?= (int) $u['advanced_search_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>)">
+                    onclick="openEditModal(<?= (int) $u['id'] ?>, <?= htmlspecialchars(json_encode($u['username']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['full_name']), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['mobile_no'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['role']), ENT_QUOTES) ?>, <?= (int) $u['lpg_search_access'] ?>, <?= (int) $u['tracing2_access'] ?>, <?= (int) $u['tracing2_monthly_limit'] ?>, <?= htmlspecialchars(json_encode($u['tracing2_tools'] !== null ? (json_decode($u['tracing2_tools'], true) ?: []) : null), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($u['tracing2_tool_credits'] !== null ? (json_decode($u['tracing2_tool_credits'], true) ?: []) : null), ENT_QUOTES) ?>, <?= (int) $u['rc_print_access'] ?>, <?= (int) $u['rc_print_monthly_limit'] ?>, <?= (int) $u['hp_gas_access'] ?>, <?= (int) $u['hp_gas_monthly_limit'] ?>, <?= (int) $u['indane_gas_access'] ?>, <?= (int) $u['indane_gas_monthly_limit'] ?>, <?= (int) $u['indane_gas_pro_access'] ?>, <?= (int) $u['tata_play_access'] ?>, <?= (int) $u['tata_play_monthly_limit'] ?>, <?= (int) $u['aadhaar_to_ration_access'] ?>, <?= (int) $u['aadhaar_to_ration_monthly_limit'] ?>, <?= (int) $u['eagle_eye_access'] ?>, <?= (int) $u['eagle_eye_monthly_limit'] ?>, <?= (int) $u['pan_india_access'] ?>, <?= (int) $u['pan_india_pro_access'] ?>, <?= (int) $u['pan_india_pro_monthly_limit'] ?>, <?= (int) $u['advanced_search_access'] ?>, <?= (int) $u['advanced_search_monthly_limit'] ?>, <?= (int) $u['max_concurrent_sessions'] ?>, <?= htmlspecialchars(json_encode($u['allowed_ips'] ?? ''), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryDateValue), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($expiryTimeValue), ENT_QUOTES) ?>, <?= (int) $u['all_gas_access'] ?>, <?= (int) $u['indian_gas_api_access'] ?>, <?= (int) $u['hp_gas_api_access'] ?>, <?= (int) $u['aadhaar_family_api_access'] ?>, <?= (int) $u['bharat_gas_api_access'] ?>, <?= (int) $u['all_gas_indane_monthly_limit'] ?>, <?= (int) $u['all_gas_bharat_monthly_limit'] ?>, <?= (int) $u['all_gas_hp_monthly_limit'] ?>, <?= (int) $u['indian_gas_api_monthly_limit'] ?>, <?= (int) $u['hp_gas_api_monthly_limit'] ?>, <?= (int) $u['bharat_gas_api_monthly_limit'] ?>, <?= (int) $u['mobile_to_address_access'] ?>, <?= (int) $u['mobile_to_address_monthly_limit'] ?>, <?= (int) $u['mobile_address_adv_access'] ?>, <?= (int) $u['mobile_address_adv_monthly_limit'] ?>, <?= (int) $u['ecommerce_access'] ?>, <?= (int) $u['aadhaar_family_api_monthly_limit'] ?>)">
               <i class="bi bi-pencil-square"></i> Edit
             </button>
             <?php if ($u['lpg_search_access'] && $u['lpg_bookmarklet_key']): ?>
@@ -773,73 +1326,126 @@ require __DIR__ . '/../includes/header.php';
         </div>
         <div class="form-group">
           <label class="form-label" for="edit-role">Role</label>
-          <select class="form-control" name="role" id="edit-role">
-            <option value="agent">Agent</option>
-            <option value="admin">Admin</option>
-          </select>
+          <?php if ($actingIsSubAdmin): ?>
+            <!-- A sub-admin can only ever edit their own plain-agent accounts
+                 (the cross-account guard and the forced role='agent' on
+                 submit already stop any escalation) - fixed display, no
+                 picker implying a choice that doesn't exist. -->
+            <input type="text" class="form-control" value="Agent" disabled>
+            <input type="hidden" name="role" value="agent">
+          <?php else: ?>
+            <select class="form-control" name="role" id="edit-role">
+              <option value="agent">Agent</option>
+              <option value="sub_admin">Sub Admin</option>
+              <option value="admin">Admin</option>
+            </select>
+          <?php endif; ?>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label"><i class="bi bi-shield-lock-fill"></i> Feature Access</label>
         <div class="acf-feature-grid">
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('ecommerce_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="ecommerce_access" id="edit-ecommerce_access" value="1">
+            <span>E Commerce</span>
+          </label>
+          <?php /* Hidden, not removed - see the create form's note above. */ ?>
+          <label class="acf-feature" style="display:none">
             <input type="checkbox" name="lpg_search_access" id="edit-lpg_search_access" value="1">
             <span>LPG Search</span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature" style="display:none">
             <input type="checkbox" name="tracing2_access" id="edit-tracing2_access" value="1">
             <span>Tracing 2.0</span>
             <span class="acf-limit" title="Total locateme.services credits this agent can spend per calendar month, across whichever tools are checked below - a cheap 1-credit search and an expensive 150-credit search count differently against this budget, not 1-for-1. Ignored for admins.">
               <input type="number" name="tracing2_monthly_limit" id="edit-tracing2_monthly_limit" value="1000" min="0" max="65535" onclick="event.stopPropagation()">cr/mo
             </span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('pan_india_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="pan_india_access" id="edit-pan_india_access" value="1">
             <span>Pan India</span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('rc_print_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="rc_print_access" id="edit-rc_print_access" value="1">
             <span>RC Print</span>
             <span class="acf-limit" title="How many RC Print searches this agent can run per calendar month - each one spends real credits on the shared locateme.services account. Ignored for admins.">
               <input type="number" name="rc_print_monthly_limit" id="edit-rc_print_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
             </span>
           </label>
-          <label class="acf-feature">
-            <input type="checkbox" name="hp_gas_access" id="edit-hp_gas_access" value="1">
-            <span>HP Gas Search</span>
-            <span class="acf-limit" title="How many HP Gas searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins.">
-              <input type="number" name="hp_gas_monthly_limit" id="edit-hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
-            </span>
-          </label>
-          <label class="acf-feature">
-            <input type="checkbox" name="indane_gas_access" id="edit-indane_gas_access" value="1">
-            <span>Indane Gas</span>
-            <span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins.">
-              <input type="number" name="indane_gas_monthly_limit" id="edit-indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
-            </span>
-          </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('tata_play_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="tata_play_access" id="edit-tata_play_access" value="1">
             <span>TATA SKY DTH</span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('aadhaar_to_ration_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="aadhaar_to_ration_access" id="edit-aadhaar_to_ration_access" value="1">
+            <span>Aadhaar to Family Members</span>
+            <span class="acf-limit" title="How many Aadhaar to Family Members searches this agent can run per calendar month - each one spends real credits on the shared locateme.services account. Ignored for admins.">
+              <input type="number" name="aadhaar_to_ration_monthly_limit" id="edit-aadhaar_to_ration_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature"<?= subAdminCanGrant('aadhaar_family_api_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="aadhaar_family_api_access" id="edit-aadhaar_family_api_access" value="1">
+            <span>Aadhaar to Family Advanced</span>
+            <span class="acf-limit" title="Searches per calendar month - every search counts, found or not. Ignored for admins.">
+              <input type="number" name="aadhaar_family_api_monthly_limit" id="edit-aadhaar_family_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature"<?= subAdminCanGrant('eagle_eye_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="eagle_eye_access" id="edit-eagle_eye_access" value="1">
             <span>Advance Pan India</span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('pan_india_pro_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="pan_india_pro_access" id="edit-pan_india_pro_access" value="1">
             <span>Night Out</span>
           </label>
-          <label class="acf-feature">
+          <label class="acf-feature"<?= subAdminCanGrant('advanced_search_access') ? '' : ' style="display:none"' ?>>
             <input type="checkbox" name="advanced_search_access" id="edit-advanced_search_access" value="1">
             <span>Advanced Search</span>
           </label>
+          <label class="acf-feature"<?= subAdminCanGrant('mobile_to_address_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="mobile_to_address_access" id="edit-mobile_to_address_access" value="1">
+            <span>Mobile to Delivery Address</span>
+            <span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins.">
+              <input type="number" name="mobile_to_address_monthly_limit" id="edit-mobile_to_address_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature"<?= subAdminCanGrant('mobile_address_adv_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="mobile_address_adv_access" id="edit-mobile_address_adv_access" value="1">
+            <span>Mobile to Delivery Address Advanced</span>
+            <span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins.">
+              <input type="number" name="mobile_address_adv_monthly_limit" id="edit-mobile_address_adv_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo
+            </span>
+          </label>
+          <label class="acf-feature acf-feature--wide"<?= subAdminCanGrant('all_gas_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="all_gas_access" id="edit-all_gas_access" value="1">
+            <span>All Gas</span>
+            <span class="acf-limit acf-limit--multi" style="display:none" title="Found searches per calendar month on All Gas, per provider. Ignored for admins.">
+              <span class="acf-limit-item">Indane <input type="number" name="all_gas_indane_monthly_limit" id="edit-all_gas_indane_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()"></span>
+              <span class="acf-limit-item">Bharat <input type="number" name="all_gas_bharat_monthly_limit" id="edit-all_gas_bharat_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()"></span>
+              <span class="acf-limit-item">HP <input type="number" name="all_gas_hp_monthly_limit" id="edit-all_gas_hp_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo</span>
+            </span>
+          </label>
+          <label class="acf-feature"<?= subAdminCanGrant('indane_gas_pro_access') ? '' : ' style="display:none"' ?>>
+            <input type="checkbox" name="indane_gas_pro_access" id="edit-indane_gas_pro_access" value="1">
+            <span>Indane Gas Pro</span>
+          </label>
+          <div class="acf-group">
+            <div class="acf-group-title"><i class="bi bi-fire"></i> All Gas Advanced</div>
+            <div class="acf-group-items">
+              <label class="acf-group-item"<?= subAdminCanGrant('indane_gas_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="indane_gas_access" id="edit-indane_gas_access" value="1"><span class="acf-group-name">Indian Gas</span><span class="acf-limit" title="How many Indane Gas searches this agent can run per calendar month - each one spends real credits (100/search) on the shared locateme.services account. Ignored for admins."> <input type="number" name="indane_gas_monthly_limit" id="edit-indane_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+              <label class="acf-group-item"<?= subAdminCanGrant('indian_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="indian_gas_api_access" id="edit-indian_gas_api_access" value="1"><span class="acf-group-name">Indian Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="indian_gas_api_monthly_limit" id="edit-indian_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+              <label class="acf-group-item"<?= subAdminCanGrant('hp_gas_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="hp_gas_access" id="edit-hp_gas_access" value="1"><span class="acf-group-name">HP Gas</span><span class="acf-limit" title="How many HP LPG searches this agent can run per calendar month - each one spends real credits (150/search) on the shared locateme.services account. Ignored for admins."> <input type="number" name="hp_gas_monthly_limit" id="edit-hp_gas_monthly_limit" value="5" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+              <label class="acf-group-item"<?= subAdminCanGrant('hp_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="hp_gas_api_access" id="edit-hp_gas_api_access" value="1"><span class="acf-group-name">HP Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="hp_gas_api_monthly_limit" id="edit-hp_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+              <label class="acf-group-item"<?= subAdminCanGrant('bharat_gas_api_access') ? '' : ' style="display:none"' ?>><input type="checkbox" name="bharat_gas_api_access" id="edit-bharat_gas_api_access" value="1"><span class="acf-group-name">Bharat Gas Advanced</span><span class="acf-limit" title="Found searches per calendar month - each one spends API credits. Ignored for admins."> <input type="number" name="bharat_gas_api_monthly_limit" id="edit-bharat_gas_api_monthly_limit" value="50" min="0" max="65535" onclick="event.stopPropagation()">/mo </span></label>
+            </div>
+          </div>
         </div>
-        <div class="acf-tracing2-tools" id="edit-tracing2-tools-panel">
+        <div class="acf-tracing2-tools" id="edit-tracing2-tools-panel" style="display:none">
           <div class="acf-tracing2-tools-label"><i class="bi bi-geo-alt-fill"></i> Tracing 2.0 — Select Tools</div>
           <div class="acf-tools-grid">
             <?php foreach (tracing2SelectableTools() as $slug => $t): ?>
-              <label class="acf-tool-check">
+              <?php $editToolHidden = $actingIsSubAdmin && $subAdminOwnTracing2Tools !== null && !in_array($slug, $subAdminOwnTracing2Tools, true); ?>
+              <label class="acf-tool-check"<?= $editToolHidden ? ' style="display:none"' : '' ?>>
                 <input type="checkbox" name="tracing2_tools[]" class="edit-tracing2-tool" value="<?= htmlspecialchars($slug) ?>">
                 <span title="<?= htmlspecialchars($t['label']) ?>"><?= htmlspecialchars($t['label']) ?></span>
                 <span class="acf-tool-credit">
@@ -851,6 +1457,13 @@ require __DIR__ . '/../includes/header.php';
             <?php endforeach; ?>
           </div>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="edit-allowed_ips"
+               title="Restrict this account to signing in only from these exact IP addresses - comma or newline separated, no CIDR ranges. Leave blank to allow any network.">
+          Allowed IPs
+        </label>
+        <input type="text" class="form-control" name="allowed_ips" id="edit-allowed_ips" placeholder="Blank = any network">
       </div>
       <div class="edit-settings-grid">
         <div class="form-group">
@@ -891,12 +1504,16 @@ require __DIR__ . '/../includes/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, tracing2Access, tracing2MonthlyLimit, tracing2Tools, tracing2ToolCredits, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, indaneGasAccess, indaneGasMonthlyLimit, tataPlayAccess, tataPlayMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, advancedSearchAccess, advancedSearchMonthlyLimit, maxSessions, expiresDate, expiresTime) {
+function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, tracing2Access, tracing2MonthlyLimit, tracing2Tools, tracing2ToolCredits, rcPrintAccess, rcPrintMonthlyLimit, hpGasAccess, hpGasMonthlyLimit, indaneGasAccess, indaneGasMonthlyLimit, indaneGasProAccess, tataPlayAccess, tataPlayMonthlyLimit, aadhaarToRationAccess, aadhaarToRationMonthlyLimit, eagleEyeAccess, eagleEyeMonthlyLimit, panIndiaAccess, panIndiaProAccess, panIndiaProMonthlyLimit, advancedSearchAccess, advancedSearchMonthlyLimit, maxSessions, allowedIps, expiresDate, expiresTime, allGasAccess, indianGasApiAccess, hpGasApiAccess, aadhaarFamilyApiAccess, bharatGasApiAccess, allGasIndaneLimit, allGasBharatLimit, allGasHpLimit, indianGasApiMonthlyLimit, hpGasApiMonthlyLimit, bharatGasApiMonthlyLimit, mobileToAddressAccess, mobileToAddressMonthlyLimit, mobileAddressAdvAccess, mobileAddressAdvMonthlyLimit, ecommerceAccess, aadhaarFamilyApiMonthlyLimit) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-username').value = username;
   document.getElementById('edit-full_name').value = fullName;
   document.getElementById('edit-mobile_no').value = mobileNo;
-  document.getElementById('edit-role').value = role;
+  // Not present at all for a sub-admin actor (fixed "Agent" display
+  // instead of a picker - see the PHP above) - guarded rather than assumed
+  // present, same reasoning as every other role-conditional element here.
+  const editRoleSelect = document.getElementById('edit-role');
+  if (editRoleSelect) editRoleSelect.value = role;
   document.getElementById('edit-lpg_search_access').checked = !!lpgAccess;
   document.getElementById('edit-tracing2_access').checked = !!tracing2Access;
   document.getElementById('edit-tracing2_monthly_limit').value = tracing2MonthlyLimit;
@@ -924,12 +1541,33 @@ function openEditModal(id, username, fullName, mobileNo, role, lpgAccess, tracin
   document.getElementById('edit-hp_gas_monthly_limit').value = hpGasMonthlyLimit;
   document.getElementById('edit-indane_gas_access').checked = !!indaneGasAccess;
   document.getElementById('edit-indane_gas_monthly_limit').value = indaneGasMonthlyLimit;
+  document.getElementById('edit-indane_gas_pro_access').checked = !!indaneGasProAccess;
   document.getElementById('edit-tata_play_access').checked = !!tataPlayAccess;
+  document.getElementById('edit-aadhaar_to_ration_access').checked = !!aadhaarToRationAccess;
+  document.getElementById('edit-aadhaar_to_ration_monthly_limit').value = aadhaarToRationMonthlyLimit;
   document.getElementById('edit-eagle_eye_access').checked = !!eagleEyeAccess;
   document.getElementById('edit-pan_india_access').checked = !!panIndiaAccess;
   document.getElementById('edit-pan_india_pro_access').checked = !!panIndiaProAccess;
   document.getElementById('edit-advanced_search_access').checked = !!advancedSearchAccess;
+  document.getElementById('edit-ecommerce_access').checked = !!ecommerceAccess;
+  document.getElementById('edit-mobile_to_address_access').checked = !!mobileToAddressAccess;
+  document.getElementById('edit-mobile_to_address_monthly_limit').value = mobileToAddressMonthlyLimit;
+  document.getElementById('edit-mobile_address_adv_access').checked = !!mobileAddressAdvAccess;
+  document.getElementById('edit-mobile_address_adv_monthly_limit').value = mobileAddressAdvMonthlyLimit;
+  document.getElementById('edit-all_gas_access').checked = !!allGasAccess;
+  document.getElementById('edit-all_gas_indane_monthly_limit').value = allGasIndaneLimit;
+  document.getElementById('edit-all_gas_bharat_monthly_limit').value = allGasBharatLimit;
+  document.getElementById('edit-all_gas_hp_monthly_limit').value = allGasHpLimit;
+  document.getElementById('edit-indian_gas_api_access').checked = !!indianGasApiAccess;
+  document.getElementById('edit-indian_gas_api_monthly_limit').value = indianGasApiMonthlyLimit;
+  document.getElementById('edit-hp_gas_api_access').checked = !!hpGasApiAccess;
+  document.getElementById('edit-hp_gas_api_monthly_limit').value = hpGasApiMonthlyLimit;
+  document.getElementById('edit-aadhaar_family_api_access').checked = !!aadhaarFamilyApiAccess;
+  document.getElementById('edit-aadhaar_family_api_monthly_limit').value = aadhaarFamilyApiMonthlyLimit;
+  document.getElementById('edit-bharat_gas_api_access').checked = !!bharatGasApiAccess;
+  document.getElementById('edit-bharat_gas_api_monthly_limit').value = bharatGasApiMonthlyLimit;
   document.getElementById('edit-max_concurrent_sessions').value = maxSessions;
+  document.getElementById('edit-allowed_ips').value = allowedIps || '';
   document.getElementById('edit-expires_date').value = expiresDate;
   document.getElementById('edit-expires_time').value = expiresTime;
   document.getElementById('edit-new_password').value = '';
@@ -945,9 +1583,12 @@ function closeEditModal() {
 function toggleTracing2ToolsPanel(checkbox, panel) {
   panel.classList.toggle('open', checkbox.checked);
 }
-document.getElementById('create-tracing2_access').addEventListener('change', function () {
-  toggleTracing2ToolsPanel(this, document.getElementById('create-tracing2-tools-panel'));
-});
+const createTracing2Checkbox = document.getElementById('create-tracing2_access');
+if (createTracing2Checkbox) {
+  createTracing2Checkbox.addEventListener('change', function () {
+    toggleTracing2ToolsPanel(this, document.getElementById('create-tracing2-tools-panel'));
+  });
+}
 document.getElementById('edit-tracing2_access').addEventListener('change', function () {
   toggleTracing2ToolsPanel(this, document.getElementById('edit-tracing2-tools-panel'));
 });
@@ -1054,7 +1695,8 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
         'username' => $u['username'],
         'full_name' => $u['full_name'],
         'mobile_no' => $u['mobile_no'] ?? '',
-        'role' => ucfirst($u['role']),
+        'role' => $u['role'] === 'sub_admin' ? 'Sub Admin' : ucfirst($u['role']),
+        'created_by' => $u['created_by'] !== null && isset($creatorNames[(int) $u['created_by']]) ? $creatorNames[(int) $u['created_by']] : '',
         'status' => $isExpired ? 'Expired' : ($u['is_active'] ? 'Active' : 'Paused'),
         'lpg' => $u['lpg_search_access'] ? 'Granted' : 'Not Granted',
         'tracing2' => $u['tracing2_access'] ? "Granted ({$u['tracing2_monthly_limit']} cr/mo)" : 'Not Granted',
@@ -1062,11 +1704,22 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
         'rc_print' => $u['rc_print_access'] ? "Granted ({$u['rc_print_monthly_limit']}/mo)" : 'Not Granted',
         'hp_gas' => $u['hp_gas_access'] ? "Granted ({$u['hp_gas_monthly_limit']}/mo)" : 'Not Granted',
         'indane_gas' => $u['indane_gas_access'] ? "Granted ({$u['indane_gas_monthly_limit']}/mo)" : 'Not Granted',
-        'tata_play' => $u['tata_play_access'] ? "Granted ({$u['tata_play_monthly_limit']}/mo)" : 'Not Granted',
-        'adv_pan_india' => $u['eagle_eye_access'] ? "Granted ({$u['eagle_eye_monthly_limit']}/mo)" : 'Not Granted',
-        'pan_india_pro' => $u['pan_india_pro_access'] ? "Granted ({$u['pan_india_pro_monthly_limit']}/mo)" : 'Not Granted',
-        'advanced_search' => $u['advanced_search_access'] ? "Granted ({$u['advanced_search_monthly_limit']}/mo)" : 'Not Granted',
+        'indane_gas_pro' => $u['indane_gas_pro_access'] ? 'Granted' : 'Not Granted',
+        'tata_play' => $u['tata_play_access'] ? 'Granted' : 'Not Granted',
+        'aadhaar_to_ration' => $u['aadhaar_to_ration_access'] ? "Granted ({$u['aadhaar_to_ration_monthly_limit']}/mo)" : 'Not Granted',
+        'adv_pan_india' => $u['eagle_eye_access'] ? 'Granted' : 'Not Granted',
+        'pan_india_pro' => $u['pan_india_pro_access'] ? 'Granted' : 'Not Granted',
+        'advanced_search' => $u['advanced_search_access'] ? 'Granted' : 'Not Granted',
+        'ecommerce' => $u['ecommerce_access'] ? 'Granted' : 'Not Granted',
+        'mobile_to_address' => $u['mobile_to_address_access'] ? "Granted ({$u['mobile_to_address_monthly_limit']}/mo)" : 'Not Granted',
+        'mobile_address_adv' => $u['mobile_address_adv_access'] ? "Granted ({$u['mobile_address_adv_monthly_limit']}/mo)" : 'Not Granted',
+        'all_gas' => $u['all_gas_access'] ? "Granted (Indane {$u['all_gas_indane_monthly_limit']}, Bharat {$u['all_gas_bharat_monthly_limit']}, HP {$u['all_gas_hp_monthly_limit']}/mo)" : 'Not Granted',
+        'indian_gas_api' => $u['indian_gas_api_access'] ? "Granted ({$u['indian_gas_api_monthly_limit']}/mo)" : 'Not Granted',
+        'hp_gas_api' => $u['hp_gas_api_access'] ? "Granted ({$u['hp_gas_api_monthly_limit']}/mo)" : 'Not Granted',
+        'aadhaar_family_api' => $u['aadhaar_family_api_access'] ? "Granted ({$u['aadhaar_family_api_monthly_limit']}/mo)" : 'Not Granted',
+        'bharat_gas_api' => $u['bharat_gas_api_access'] ? "Granted ({$u['bharat_gas_api_monthly_limit']}/mo)" : 'Not Granted',
         'max_logins' => $u['max_concurrent_sessions'],
+        'allowed_ips' => $u['allowed_ips'] ?: 'Any',
         'expires_at' => $u['expires_at'] ? date('d/m/Y H:i', strtotime($u['expires_at'])) : 'No expiry',
         'created_at' => $u['created_at'] ? date('d/m/Y H:i', strtotime($u['created_at'])) : '',
         'last_login_at' => $u['last_login_at'] ? date('d/m/Y H:i', strtotime($u['last_login_at'])) : 'Never',
@@ -1074,10 +1727,10 @@ const AGENTS_EXPORT_DATA = <?= json_encode(array_map(function ($u) {
 }, $users), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 
 document.getElementById('export-accounts-btn').addEventListener('click', () => {
-  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Status', 'LPG', 'Tracing 2.0', 'Pan India', 'RC Print', 'HP Gas', 'Indane Gas', 'TATA SKY DTH', 'Adv. Pan India', 'Night Out', 'Advanced Search', 'Max Logins', 'Expiry', 'Created At', 'Last Login'];
+  const headers = ['ID', 'Username', 'Full Name', 'Mobile Number', 'Role', 'Created By', 'Status', 'E Commerce', 'LPG', 'Tracing 2.0', 'Pan India', 'RC Print', 'HP Gas', 'Indane Gas', 'Indane Gas Pro', 'TATA SKY DTH', 'Aadhaar to Family Members', 'Adv. Pan India', 'Night Out', 'Advanced Search', 'Mobile to Delivery Address', 'Mobile to Delivery Address Advanced', 'All Gas', 'Indian Gas Advanced', 'HP Gas Advanced', 'Aadhaar to Family Advanced', 'Bharat Gas Advanced', 'Max Logins', 'Allowed IPs', 'Expiry', 'Created At', 'Last Login'];
   const aoa = [headers, ...AGENTS_EXPORT_DATA.map(u => [
-    u.id, u.username, u.full_name, u.mobile_no, u.role, u.status, u.lpg, u.tracing2, u.pan_india,
-    u.rc_print, u.hp_gas, u.indane_gas, u.tata_play, u.adv_pan_india, u.pan_india_pro, u.advanced_search, u.max_logins, u.expires_at, u.created_at, u.last_login_at,
+    u.id, u.username, u.full_name, u.mobile_no, u.role, u.created_by, u.status, u.ecommerce, u.lpg, u.tracing2, u.pan_india,
+    u.rc_print, u.hp_gas, u.indane_gas, u.indane_gas_pro, u.tata_play, u.aadhaar_to_ration, u.adv_pan_india, u.pan_india_pro, u.advanced_search, u.mobile_to_address, u.mobile_address_adv, u.all_gas, u.indian_gas_api, u.hp_gas_api, u.aadhaar_family_api, u.bharat_gas_api, u.max_logins, u.allowed_ips, u.expires_at, u.created_at, u.last_login_at,
   ])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();

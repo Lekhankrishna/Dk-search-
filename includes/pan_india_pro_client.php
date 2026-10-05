@@ -17,7 +17,7 @@
 // directly here and already committed to git history; moved out.
 require_once __DIR__ . '/../config/vendor_credentials.php';
 const PAN_INDIA_PRO_API_BASE = 'https://api.knotorious.us';
-const PAN_INDIA_PRO_FRONTEND = 'https://www.jobhuntworldknotorious.online';
+const PAN_INDIA_PRO_FRONTEND = 'https://www.knotoriousai.online';
 define('PAN_INDIA_PRO_EMAIL', $PAN_INDIA_PRO_EMAIL);
 define('PAN_INDIA_PRO_PASSWORD', $PAN_INDIA_PRO_PASSWORD);
 
@@ -40,10 +40,9 @@ function panIndiaProCurlHandle() {
         // here for it to matter.
         //
         // Same php.ini gap as includes/eagleeye_client.php (no curl.cainfo
-        // configured, and system php.ini isn't writable from here) - reuses
-        // the same on-disk Mozilla CA bundle from XAMPP's phpMyAdmin/Composer
-        // install.
-        CURLOPT_CAINFO => 'C:\\xampp\\phpMyAdmin\\vendor\\composer\\ca-bundle\\res\\cacert.pem',
+        // configured) - uses the Mozilla CA bundle kept in config/, since
+        // XAMPP's copy no longer exists on this machine.
+        CURLOPT_CAINFO => __DIR__ . '/../config/cacert.pem',
     ]);
     return $ch;
 }

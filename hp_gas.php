@@ -11,8 +11,12 @@ if (!$isAdmin) {
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $monthlyLimit = (int) $stmt->fetchColumn();
 
+    // result_count > 0 (2026-08-28) - matches hp_gas_api.php's own quota
+    // query: a clean not-found result doesn't cost the agent quota, so this
+    // badge must count the same rows the live gate actually enforces
+    // against, not every logged attempt.
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'hp_gas' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
+        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'hp_gas' AND result_count > 0 AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
     );
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $usedThisMonth = (int) $stmt->fetchColumn();
@@ -29,7 +33,7 @@ require __DIR__ . '/includes/header.php';
 <div class="confetti-container" id="confetti-container"></div>
 
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
-  <h1 class="page-title" style="margin:0"><i class="bi bi-fire"></i> HP Gas Search</h1>
+  <h1 class="page-title" style="margin:0"><i class="bi bi-fire"></i> HP LPG Search</h1>
   <?php if ($isAdmin): ?>
     <span id="hpGasQuotaBadge" class="badge badge-neutral" style="margin-left:auto">Unlimited (Admin)</span>
   <?php elseif ($quota !== null): ?>
@@ -228,16 +232,20 @@ function updateQuotaBadge(used, limit) {
 // locateme.services shows for a given number is what gets displayed.
 // Takes a target container so Bulk Search (below) can render one of these
 // per number instead of duplicating this markup logic.
+// Sections hidden from the UI and the bulk CSV per explicit instruction:
+// "Bank & LPG Linkage", and "Geo-Intelligence" (2026-10-04). Still scraped
+// and present in data.sections (hp_gas.py stays generic) - filtered here.
+function visibleSections(sections) {
+  return (sections || []).filter(section => !/bank|geo/i.test(section.title || ""));
+}
+
 function renderResultSections(container, data) {
   container.innerHTML = "";
 
   if (!data.found) {
     container.innerHTML = `<div class="hp-not-found">Not found for ${data.mobileNumber}.</div>`;
   } else if (Array.isArray(data.sections) && data.sections.length) {
-    // "Bank & LPG Linkage" hidden from the UI per explicit instruction -
-    // still scraped/present in data.sections (hp_gas.py stays generic), just
-    // filtered out here rather than in the scraper.
-    data.sections.filter(section => !/bank/i.test(section.title)).forEach(section => {
+    visibleSections(data.sections).forEach(section => {
       const box = document.createElement("div");
       box.className = "hp-section";
       const title = document.createElement("div");
@@ -488,7 +496,7 @@ if (tabBulk) {
     const columns = [];
     const columnSet = new Set();
     bulkResults.forEach(r => {
-      (r.sections || []).forEach(section => {
+      visibleSections(r.sections).forEach(section => {
         section.fields.forEach(field => {
           const key = `${section.title}: ${field.label}`;
           if (!columnSet.has(key)) { columnSet.add(key); columns.push(key); }
@@ -500,7 +508,7 @@ if (tabBulk) {
     const lines = [headers.join(",")];
     bulkResults.forEach(r => {
       const valueMap = {};
-      (r.sections || []).forEach(section => {
+      visibleSections(r.sections).forEach(section => {
         section.fields.forEach(field => {
           valueMap[`${section.title}: ${field.label}`] = field.value || "";
         });

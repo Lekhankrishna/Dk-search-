@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/includes/auth.php';
-requireLogin();
+requireEcommerceAccess(); // requireLogin() + 403 without E Commerce access (Admin > Agents)
 $user = currentUser();
 require __DIR__ . '/includes/header.php';
 ?>

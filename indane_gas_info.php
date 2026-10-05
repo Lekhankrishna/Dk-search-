@@ -7,14 +7,24 @@ require_once __DIR__ . '/config/db.php';
 // has its own count-based monthly quota (indane_gas_monthly_limit,
 // search_type = 'indane_gas'), not the shared Tracing 2.0 credit bucket.
 $isAdmin = ($_SESSION['role'] ?? '') === 'admin';
+// Bulk Search for every account with Indane Gas access (2026-10-03, per
+// explicit instruction - was admin-only). Each bulk number still goes
+// through tracing2_api.php individually, so an agent's monthly limit is
+// enforced per number exactly as for single searches; the batch stops at
+// the limit (see runBulkSearch()).
+$canBulk = true;
 $quota = null;
 if (!$isAdmin) {
     $stmt = $pdo->prepare('SELECT indane_gas_monthly_limit FROM users WHERE id = :id');
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $monthlyLimit = (int) $stmt->fetchColumn();
 
+    // result_count > 0 (2026-08-28) - matches tracing2_api.php's own quota
+    // query for this same search_type: a clean not-found result doesn't
+    // cost the agent quota, so this badge must count the same rows the
+    // live gate actually enforces against, not every logged attempt.
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'indane_gas' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
+        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'indane_gas' AND result_count > 0 AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
     );
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $usedThisMonth = (int) $stmt->fetchColumn();
@@ -65,11 +75,22 @@ require __DIR__ . '/includes/header.php';
   @keyframes ig-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .ig-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
 
-  /* Result table - same shape as hp_gas.php's .hp-section/.hp-section-table
-     (colored title bar + plain label:value rows) rather than tracing2.php's
-     icon-grid cards, per explicit instruction ("colour and tables theme
-     like other app"). One consumer per search here, same as HP Gas/RC
-     Print, so a single stacked table reads better than a multi-column grid. */
+  /* Result cards - identical shape/classes to tracing2.php's own .t2-*
+     rules so a record looks the same wherever it's shown in this app. */
+  .t2-record{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
+  .t2-record-header{padding:12px 16px;background:#2e9e3f;color:#fff;display:flex;align-items:center;gap:10px;}
+  .t2-record-header i{font-size:16px;}
+  .t2-record-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+  .t2-record-status{margin-left:auto;font-size:10.5px;padding:2px 10px;border-radius:999px;
+    font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:rgba(255,255,255,.2);}
+  .t2-field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:16px;}
+  .t2-field-item{display:flex;align-items:flex-start;gap:10px;}
+  .t2-field-item i{font-size:15px;color:#2e9e3f;margin-top:2px;flex-shrink:0;}
+  .t2-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#999;margin-bottom:2px;}
+  .t2-field-value{font-size:13px;font-weight:600;color:#222;word-break:break-word;}
+  /* Section cards - same look as hp_gas.php's result (per explicit
+     instruction, 2026-10-04): one card per section, green title bar, a
+     label/value list inside. */
   .ig-section{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;margin-bottom:14px;}
   .ig-section-title{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
     text-transform:uppercase;letter-spacing:.4px;}
@@ -78,7 +99,7 @@ require __DIR__ . '/includes/header.php';
   .ig-section-table tr:nth-child(even){background:#f8f8fc;}
   .ig-section-table td{padding:8px 16px;font-size:12.5px;border-bottom:1px solid #eee;vertical-align:top;}
   .ig-section-table tr:last-child td{border-bottom:none;}
-  .ig-field-label{width:38%;color:#777;font-weight:600;}
+  .ig-field-label{width:38%;color:#777;font-weight:600;text-transform:uppercase;}
   .ig-field-value{color:#222;font-weight:500;word-break:break-word;}
   .ig-result-wrap{margin-top:16px;display:none;}
   .ig-result-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
@@ -89,13 +110,11 @@ require __DIR__ . '/includes/header.php';
     border-radius:50%;border:1.5px solid #e5e5e5;}
   .ig-no-results span{font-size:14px;color:#888;}
 
-  <?php if ($isAdmin): ?>
-  /* Single/Bulk mode tabs - admin-only (see the PHP gate below). Each
-     bulk number is its own ~20s blocking locateme.services search run
-     sequentially client-side (this tool has no job-queue backend like
-     lpg_search.py's), so bulk is capped low (BULK_NUMBER_LIMIT below) and
-     kept off agents' quota-limited accounts entirely rather than letting
-     them queue up a batch that instantly exhausts a 5/month limit. */
+  <?php if ($canBulk): ?>
+  /* Single/Bulk mode tabs (see $canBulk above). Each bulk number is its
+     own blocking locateme.services search run sequentially client-side
+     (this tool has no job-queue backend like lpg_search.py's), so bulk is
+     capped low (BULK_NUMBER_LIMIT below). */
   .ig-tabs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .ig-tab{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;
     border:1px solid #e2e2ea;background:#fff;font-size:12.5px;font-weight:600;color:#555;
@@ -117,7 +136,7 @@ require __DIR__ . '/includes/header.php';
   .t2-group-heading:first-child{margin-top:0;}
 </style>
 
-<?php if ($isAdmin): ?>
+<?php if ($canBulk): ?>
 <div class="ig-tabs">
   <button type="button" class="ig-tab active" id="igTabSingle"><i class="bi bi-search"></i> Single Search</button>
   <button type="button" class="ig-tab" id="igTabBulk"><i class="bi bi-list-ol"></i> Bulk Search</button>
@@ -145,7 +164,7 @@ require __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<?php if ($isAdmin): ?>
+<?php if ($canBulk): ?>
 <div id="igBulkMode" style="display:none">
   <div class="ig-card">
     <div class="ig-card-body">
@@ -250,63 +269,147 @@ function updateQuotaBadge(used, limit, unit) {
   quotaBadge.classList.toggle("badge-neutral", used < limit);
 }
 
-// Only these fields are shown, in this order, per explicit instruction -
-// everything else locateme.services returns for this tool (eKYC details,
-// bank linkage, geo-intelligence, etc.) is hidden. Matched case-
-// insensitively against whatever label text the generic scraper picked up,
-// not a fixed key, since tracing2_tools.py doesn't normalize label casing.
-const IG_VISIBLE_FIELDS = [
-  "registered mobile", "consumer id", "full name", "physical address", "agency name", "agency contact", "agency address",
+// Only these columns are shown, in this order - the rest of whatever
+// locateme.services returns for this tool is hidden, per explicit
+// instruction (2026-08-23). Matched against each record's fields
+// case-insensitively, since the source site renders its own labels in
+// all caps but the scraped text case isn't guaranteed.
+const IG_COLUMNS = [
+  "Registered Mobile", "Relationship Id", "Consumer Id", "Full Name",
+  "Physical Address", "Agency Name", "Agency Contact", "Agency Address",
+  "Main Product", "Category",
 ];
 
-// The backend returns one "master" record holding every field for the
-// consumer, plus several more records that just re-group a SUBSET of that
-// same master's fields under section names (Consumer Details, Distributor
-// Intelligence, ...) - not separate people (confirmed live 2026-08-19:
-// searching one number returned 5 records, all for the same consumer).
-// Rendering each of those separately would repeat the same 2-3 fields
-// across multiple cards and leave the section-only records that happen to
-// have none of the 6 whitelisted fields as empty boxes. Merging every
-// record's fields into one map first (first-seen label wins) and building
-// ONE card from that avoids both problems. Returns null if nothing in the
-// whitelist was present at all, so the caller can treat that as not found.
-function buildConsolidatedCard(records) {
-  const fieldsByLabel = new Map();
-  records.forEach(r => (r.fields || []).forEach(f => {
-    const key = f.label.trim().toLowerCase();
-    if (!fieldsByLabel.has(key)) fieldsByLabel.set(key, f);
-  }));
+// locateme.services splits ONE person's data across several separate
+// cards (confirmed live 2026-08-23: a single search came back as 5
+// records - Consumer Detail fields in one, Agency Detail fields in
+// another, empty placeholders in the rest) rather than one card with
+// everything - merges every record's fields into one flat list first, so
+// columns that came from a different card still end up in the same row
+// as the rest of that person's data.
+function mergeIndaneGasFields(records) {
+  const merged = [];
+  records.forEach(record => {
+    (record.fields || []).forEach(f => {
+      const label = (f.label || "").trim();
+      const value = (f.value || "").trim();
+      if (value && !merged.some(m => m.label.toLowerCase() === label.toLowerCase())) {
+        merged.push({ label, value });
+      }
+    });
+  });
+  return merged;
+}
 
-  const box = document.createElement("div");
-  box.className = "ig-section";
+// Substring match, not exact - confirmed live 2026-08-23: the real field
+// is labelled "UCM RELATIONSHIP ID" on the source site, not "RELATIONSHIP
+// ID" as it reads once summarized/typed out, so an exact-equality lookup
+// silently missed it (showed "—" despite the value being right there in
+// the response). Matching on "does this label CONTAIN the column name"
+// finds it regardless of whatever prefix the site puts in front.
+function lookupIndaneGasField(merged, col) {
+  const target = col.toLowerCase();
+  const hit = merged.find(m => m.label.toLowerCase().includes(target));
+  return hit ? hit.value : "—";
+}
 
-  const title = document.createElement("div");
-  title.className = "ig-section-title";
-  title.textContent = (records.find(r => r.name)?.name) || "Result";
-  box.appendChild(title);
+function buildIndaneGasTable(records) {
+  const merged = mergeIndaneGasFields(records);
+  const row = IG_COLUMNS.map(col => lookupIndaneGasField(merged, col));
+
+  // Same weighted colgroup sizing as pan_india.php's buildResultsTable()
+  // (reusing its .pan-results-table class, which is what actually turns on
+  // table-layout:fixed + cell wrapping instead of the base .results-table's
+  // nowrap/ellipsis) - percentage widths driven by each column's own
+  // content length, capped so one very long field (an address) can't
+  // squeeze the rest down to nothing, so all 10 columns fit the page width
+  // with long values wrapping onto multiple lines instead of forcing a
+  // horizontal scroll.
+  const longestToken = value => value.split(/[\s,;]+/).reduce((max, tok) => Math.max(max, tok.length), 0);
+  const rawWeights = IG_COLUMNS.map((col, i) => {
+    const v = row[i] === "—" ? "" : row[i];
+    const maxLen = Math.max(col.length, v.length);
+    const maxToken = Math.max(col.length, longestToken(v));
+    return Math.max(Math.sqrt(maxLen) * 5, col.length * 1.5, maxToken * 3.2, 16);
+  });
+  const rawTotal = rawWeights.reduce((a, b) => a + b, 0);
+  const cap = rawTotal * 0.22;
+  const weights = rawWeights.map(w => Math.min(w, cap));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
 
   const table = document.createElement("table");
-  table.className = "ig-section-table";
-  const tbody = document.createElement("tbody");
-  let matched = 0;
-  IG_VISIBLE_FIELDS.forEach(key => {
-    const field = fieldsByLabel.get(key);
-    if (!field) return;
-    matched++;
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="ig-field-label"></td><td class="ig-field-value"></td>`;
-    tr.querySelector(".ig-field-label").textContent = field.label;
-    tr.querySelector(".ig-field-value").textContent = field.value || "—";
-    tbody.appendChild(tr);
+  table.className = "results-table pan-results-table";
+
+  const colgroup = document.createElement("colgroup");
+  weights.forEach(w => {
+    const col = document.createElement("col");
+    col.style.width = (w / totalWeight * 100).toFixed(2) + "%";
+    colgroup.appendChild(col);
   });
-  if (matched === 0) return null;
+  table.appendChild(colgroup);
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  IG_COLUMNS.forEach(col => {
+    const th = document.createElement("th");
+    th.textContent = col;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  const tr = document.createElement("tr");
+  row.forEach(value => {
+    const td = document.createElement("td");
+    td.textContent = value;
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
   table.appendChild(tbody);
-  box.appendChild(table);
-  return box;
+  return table;
 }
 
 let lastRecords = [];
 const exportBtn = document.getElementById("igExportBtn");
+
+// HP Gas-style section cards (per explicit instruction, 2026-10-04). The
+// site returns one summary record (the person - name/status + every field)
+// plus one record per section ("CONSUMER DETAILS", "DISTRIBUTOR
+// INTELLIGENCE", ...). The section records are shown as cards; if none
+// came back, each record becomes its own card instead.
+function buildIndaneGasCards(records) {
+  const holder = document.createElement("div");
+  const isSection = r => /details|intelligence|specs|compliance|profile/i.test(r.name || "");
+  // "Product & Asset Specs" and "Eligibility & Compliance" not shown (per
+  // explicit instruction, 2026-10-04).
+  const isHidden = r => /specs|compliance/i.test(r.name || "");
+  const sections = (records.some(isSection) ? records.filter(isSection) : records).filter(r => !isHidden(r));
+  sections.forEach(rec => {
+    const fields = (rec.fields || []).filter(f => String(f.value || "").trim());
+    if (!fields.length) return;
+    const box = document.createElement("div");
+    box.className = "ig-section";
+    const title = document.createElement("div");
+    title.className = "ig-section-title";
+    title.textContent = rec.name || "Consumer Details";
+    box.appendChild(title);
+    const table = document.createElement("table");
+    table.className = "ig-section-table";
+    const tbody = document.createElement("tbody");
+    fields.forEach(f => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="ig-field-label"></td><td class="ig-field-value"></td>`;
+      tr.querySelector(".ig-field-label").textContent = f.label;
+      tr.querySelector(".ig-field-value").textContent = f.value;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    box.appendChild(table);
+    holder.appendChild(box);
+  });
+  return holder;
+}
 
 function renderResult(data) {
   recordsWrap.innerHTML = "";
@@ -315,12 +418,13 @@ function renderResult(data) {
   lastRecords = [];
 
   const records = (data.found && Array.isArray(data.records)) ? data.records : [];
-  const card = records.length ? buildConsolidatedCard(records) : null;
 
-  if (card) {
-    lastRecords = [records[0]];
+  if (records.length) {
+    lastRecords = records;
+    // One merged row regardless of how many fragments the backend
+    // returned - see buildIndaneGasTable()'s own comment.
     resultCountText.textContent = "1 result found";
-    recordsWrap.appendChild(card);
+    recordsWrap.appendChild(buildIndaneGasCards(records));
     resultWrap.style.display = "block";
     exportBtn.disabled = false;
     startConfetti();
@@ -335,26 +439,36 @@ function renderResult(data) {
   }
 }
 
-// Same IG_VISIBLE_FIELDS whitelist/order as buildConsolidatedCard(), so the
-// export matches what's actually shown on screen instead of dumping every
-// field locateme.services returned.
+// Export matches what's actually shown - just IG_COLUMNS, not every field
+// locateme.services returns, same "hide the rest" instruction as the table.
+// Grouped by section (one group per searched number in bulk mode; a single
+// implicit group for a single search) and merged the same way
+// buildIndaneGasTable() does, so this has exactly one row per search - not
+// one per raw fragment locateme.services returned for that person.
 exportBtn.addEventListener("click", () => {
   if (!lastRecords.length) return;
   const hasSection = lastRecords.some(r => r.section);
-  const columns = hasSection ? ["Number"] : [];
-  const presentFields = IG_VISIBLE_FIELDS.filter(key =>
-    lastRecords.some(r => (r.fields || []).some(f => f.label.trim().toLowerCase() === key))
-  );
-  const labelByKey = new Map();
-  lastRecords.forEach(r => (r.fields || []).forEach(f => labelByKey.set(f.label.trim().toLowerCase(), f.label)));
-  presentFields.forEach(key => columns.push(labelByKey.get(key)));
+  const columns = hasSection ? ["Number", ...IG_COLUMNS] : [...IG_COLUMNS];
 
-  const aoa = [columns, ...lastRecords.map(r => {
-    const valueMap = {};
-    if (hasSection) valueMap["Number"] = r.section || "";
-    (r.fields || []).forEach(f => { valueMap[f.label] = f.value || ""; });
-    return columns.map(c => valueMap[c] || "");
-  })];
+  const groups = new Map();
+  lastRecords.forEach(r => {
+    const key = r.section || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+
+  const aoa = [columns];
+  groups.forEach((groupRecords, section) => {
+    const merged = mergeIndaneGasFields(groupRecords);
+    const row = [];
+    if (hasSection) row.push(section);
+    IG_COLUMNS.forEach(col => {
+      const value = lookupIndaneGasField(merged, col);
+      row.push(value === "—" ? "" : value);
+    });
+    aoa.push(row);
+  });
+
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Result");
@@ -390,7 +504,9 @@ async function runSearch() {
 
     if (!res.ok) {
       stopProgress(null);
-      statusEl.textContent = SERVER_DOWN_MESSAGE;
+      // The real reason when there is one (e.g. "Indane Gas source is not
+      // responding right now", or the monthly-limit message).
+      statusEl.textContent = data.error || SERVER_DOWN_MESSAGE;
       if (typeof data.used === "number" && typeof data.limit === "number") {
         updateQuotaBadge(data.used, data.limit, data.unit);
       }
@@ -420,9 +536,8 @@ clearBtn.addEventListener("click", () => {
   stopConfetti();
 });
 
-// --- Bulk Search - admin-only (see the PHP gate around #igBulkMode above;
-// these elements simply don't exist in the DOM for a non-admin, so this
-// entire block is a no-op for them). Each number is its own ~20s blocking
+// --- Bulk Search (see $canBulk; when it's off these elements don't exist
+// in the DOM, so this entire block is a no-op). Each number is its own blocking
 // locateme.services search, run one at a time (no job-queue backend like
 // lpg_search.py's to batch them) - capped well below lpg_search.php's own
 // bulk limit for that reason.
@@ -491,6 +606,7 @@ if (tabSingle) {
     bulkProgressWrap.style.display = "block";
     const startedAt = Date.now();
     let foundAny = false;
+    let foundCount = 0;
 
     for (let i = 0; i < numbers.length; i++) {
       const number = numbers[i];
@@ -517,27 +633,40 @@ if (tabSingle) {
           updateQuotaBadge(data.used, data.limit, data.unit);
         }
 
+        // Monthly limit reached - every remaining number would be refused
+        // the same way, so stop the batch here with the real message.
+        if (res.status === 429) {
+          bulkStatusEl.textContent = data.error || "Monthly limit reached.";
+          const remaining = numbers.length - i;
+          const stopped = document.createElement("div");
+          stopped.className = "ig-result-count";
+          stopped.style.cssText = "color:var(--c-danger,#dc2626);margin:4px 0 14px;";
+          stopped.textContent = `${data.error || "Monthly limit reached."} ${remaining} number${remaining === 1 ? "" : "s"} not searched.`;
+          recordsWrap.appendChild(stopped);
+          numbers = numbers.slice(0, i);
+          break;
+        }
+
         const records = (res.ok && data.found && Array.isArray(data.records)) ? data.records : [];
-        const card = records.length ? buildConsolidatedCard(records) : null;
         const heading = document.createElement("div");
         heading.className = "t2-group-heading";
         heading.textContent = number;
         recordsWrap.appendChild(heading);
 
-        if (card) {
-          // Heading already added above (the number itself). The export
-          // copy carries section = number so the "Number" column works;
-          // just the master record (index 0) is kept per number, same as
-          // renderResult() - buildConsolidatedCard() already merged
-          // whatever fields it needed out of the rest.
-          recordsWrap.appendChild(card);
-          lastRecords.push({ ...records[0], section: number });
+        if (records.length) {
+          // Heading already added above (the number itself), so the table
+          // goes straight in rather than repeating a per-record heading.
+          // The export copy still gets section = number so the "Number"
+          // column works.
+          recordsWrap.appendChild(buildIndaneGasCards(records));
+          lastRecords = lastRecords.concat(records.map(r => ({ ...r, section: number })));
           foundAny = true;
+          foundCount++;
         } else {
           const empty = document.createElement("div");
           empty.className = "ig-result-count";
           empty.style.cssText = "color:#999;margin:-4px 0 14px;";
-          empty.textContent = res.ok ? "Data not found" : "Server is down. Please try again later.";
+          empty.textContent = res.ok ? "Data not found" : (data.error || "Server is down. Please try again later.");
           recordsWrap.appendChild(empty);
         }
       } catch (err) {
@@ -555,7 +684,11 @@ if (tabSingle) {
 
     bulkProgressLabel.textContent = `${numbers.length} number${numbers.length === 1 ? "" : "s"} searched`;
     bulkProgressEta.textContent = `Done in ${formatDuration((Date.now() - startedAt) / 1000)}`;
-    resultCountText.textContent = `${lastRecords.length} result${lastRecords.length === 1 ? "" : "s"} found across ${numbers.length} number${numbers.length === 1 ? "" : "s"}`;
+    // foundCount (one merged result per searched number that found
+    // anything), not lastRecords.length - that still holds every raw
+    // fragment locateme.services returned per number (see
+    // buildIndaneGasTable()'s own comment on why those get merged).
+    resultCountText.textContent = `${foundCount} result${foundCount === 1 ? "" : "s"} found across ${numbers.length} number${numbers.length === 1 ? "" : "s"}`;
     resultWrap.style.display = "block";
     exportBtn.disabled = lastRecords.length === 0;
     setBulkSearching(false);

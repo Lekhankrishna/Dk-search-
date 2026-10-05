@@ -1,4 +1,18 @@
 <?php
+// No caching for any authenticated page - confirmed live 2026-09-06: an
+// agent kept seeing indane_gas_pro.php's OLD inline JS (a stale
+// ESTIMATED_SECONDS progress-bar estimate) well after the file on disk and
+// every direct localhost request had already picked up the fix, accessed
+// via the public datasearch.in URL rather than 127.0.0.1 directly - this
+// page never sent any cache directives at all, so a browser (or anything
+// between it and this server on that public path) was free to cache the
+// whole HTML+inline-script response under its own heuristics and keep
+// replaying it past a normal refresh. Every dynamic, per-request page here
+// goes through this one shared header, so setting it once here rules this
+// out everywhere instead of one page at a time.
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+
 $user = currentUser();
 $bp = $basePath ?? '';
 $currentPage = basename($_SERVER['SCRIPT_NAME']);
@@ -15,9 +29,11 @@ $searchRegions = [
 // state" everywhere below: skip the index.php routing and the
 // sidebar-state-item class that index.php's JS uses to intercept clicks for
 // same-page state switching (a real navigation here, not a state swap).
-$searchRegionsExtra = [
-    ['label' => 'E Commerce', 'href' => 'ecommerce.php'],
-];
+// Shown only with E Commerce access (Admin > Agents, 2026-10-04).
+$searchRegionsExtra = [];
+if (hasEcommerceAccess()) {
+    $searchRegionsExtra[] = ['label' => 'E Commerce', 'href' => 'ecommerce.php'];
+}
 // Advanced Search is opt-in per account (Admin > Agents > "Advanced Search
 // Access") - same pattern as RC Print below. Placed right after Kerala in
 // the sidebar (i.e. first in this array, since $searchRegions - the
@@ -44,6 +60,17 @@ if (hasAdvancedSearchAccess()) {
 if (hasTracing2Access()) {
     $tracing2Index = hasAdvancedSearchAccess() ? 1 : 0;
     array_splice($searchRegionsExtra, $tracing2Index, 0, [['label' => 'Tracing 2.0', 'href' => 'tracing2.php']]);
+}
+// Mobile to Delivery Address (Nexora API v3, 2026-10-04) - directly below Advanced
+// Search per explicit instruction (so ahead of Tracing 2.0); first item when
+// this account has no Advanced Search.
+if (hasMobileToAddressAccess()) {
+    array_splice($searchRegionsExtra, hasAdvancedSearchAccess() ? 1 : 0, 0, [['label' => 'Mobile to Delivery Address', 'href' => 'mobile_to_address.php']]);
+}
+// Mobile to Delivery Address Advanced (2026-10-04) - directly below Mobile to Delivery
+// Address per explicit instruction.
+if (hasMobileAddressAdvAccess()) {
+    array_splice($searchRegionsExtra, (hasAdvancedSearchAccess() ? 1 : 0) + (hasMobileToAddressAccess() ? 1 : 0), 0, [['label' => 'Mobile to Delivery Address Advanced', 'href' => 'mobile_address_advanced.php']]);
 }
 // Pan India is opt-in per account (Admin > Agents > "Pan India Access"),
 // same as LPG Search below (2026-08-19 - previously unconditional for every
@@ -75,7 +102,7 @@ if (hasPanIndiaProAccess()) {
 // The pages/APIs enforce the same check server-side (403) regardless, so
 // this is purely about not showing a link the user can't use, not the
 // actual access control. Labelled "Indian LPG Search" (not just "LPG
-// Search") now that HP Gas Search also exists, so the two aren't ambiguous
+// Search") now that HP LPG Search also exists, so the two aren't ambiguous
 // in the sidebar.
 if (false && hasLpgSearchAccess()) {
     // Single Search and Bulk Search used to be two separate pages/sidebar
@@ -92,35 +119,89 @@ if (false && hasLpgSearchAccess()) {
     // link/bookmark still works for anyone who already has access.
     $searchRegionsExtra[] = ['label' => 'Indian LPG Search', 'href' => 'lpg_search.php'];
 }
+// RC Print's own standalone page (rc_print.php) never stopped working
+// after it was folded into Tracing 2.0 as a tab (2026-08-17) - same
+// re-add reasoning as HP Gas right below: hasRcPrintAccess() is its own
+// independent flag, not dependent on generic tracing2_access.
+if (hasRcPrintAccess()) {
+    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
+}
+// All Gas (tracekart.in Skip Trace "Gas Connection", 2026-10-03) - placed
+// directly below RC Print per explicit instruction.
+if (hasAllGasAccess()) {
+    $searchRegionsExtra[] = ['label' => 'All Gas', 'href' => 'all_gas.php'];
+}
+// All Gas Advanced (2026-10-04) - directly below All Gas per explicit
+// instruction: one page (all_gas_advanced.php) with an "Indian Gas" tab
+// (indane_gas_access), an "Indian Gas Advanced" tab (indian_gas_api_access), and
+// "HP Gas" (hp_gas_access) / "HP Gas Advanced" (hp_gas_api_access) tabs;
+// shown when the account has any of them.
+if (hasIndaneGasAccess() || hasIndianGasApiAccess() || hasHpGasAccess() || hasHpGasApiAccess() || hasBharatGasApiAccess()) {
+    $searchRegionsExtra[] = ['label' => 'All Gas Advanced', 'href' => 'all_gas_advanced.php'];
+}
+// HP LPG Search's own standalone page (hp_gas.php) never stopped working
+// after it was folded into Tracing 2.0 as a tab (2026-08-17) - only its
+// sidebar entry was removed at the time, on the assumption agents would
+// reach it via Tracing 2.0 instead. Re-added directly (2026-08-19) since
+// hasHpGasAccess() is already its own independent flag (same as RC Print),
+// not dependent on generic tracing2_access - an agent with only HP Gas
+// granted had no sidebar way to reach it while Tracing 2.0 itself was
+// hidden from them.
+// Sidebar entry hidden per explicit instruction (2026-10-04) - HP Gas is a
+// tab of All Gas Advanced now. `false &&` keeps this a one-line revert;
+// hp_gas.php (with its Bulk Search) still works by direct link.
+if (false && hasHpGasAccess()) {
+    $searchRegionsExtra[] = ['label' => 'HP Gas', 'href' => 'hp_gas.php'];
+}
+// HP Gas Advanced (Nexora's HP gas connection lookup, 2026-10-04) - directly
+// below HP Gas per explicit instruction.
+// Hidden too (2026-10-04) - now the "HP Gas Advanced" tab of All Gas Advanced.
+if (false && hasHpGasApiAccess()) {
+    $searchRegionsExtra[] = ['label' => 'HP Gas Advanced', 'href' => 'hp_gas_advanced.php'];
+}
 // Dedicated single-purpose page for the "Indane Gas Info" tool
 // (indane_gas_info.php), placed directly below Indian LPG Search since
 // agents look up both for the same customer. Has its own dedicated access
 // flag + count-based monthly quota (indane_gas_access, promoted out of the
 // generic Tracing 2.0 per-tool checklist 2026-08-18 - see
 // includes/tracing2_tools.php's own comment on why), same pattern as RC
-// Print/HP Gas Search.
-if (hasIndaneGasAccess()) {
+// Print/HP LPG Search.
+// Sidebar entry hidden per explicit instruction (2026-10-04) - the same
+// lookup is the "Indian Gas" tab of All Gas Advanced. The `false &&` makes
+// this a one-line revert; indane_gas_info.php still works by direct link.
+if (false && hasIndaneGasAccess()) {
     $searchRegionsExtra[] = ['label' => 'Indane Gas', 'href' => 'indane_gas_info.php'];
 }
-// HP Gas Search's own standalone sidebar entry (moved below Indane Gas per
-// explicit instruction, 2026-08-19) - alongside its HP Gas Advanced tab
-// inside Tracing 2.0 above, same hasHpGasAccess() flag gates both.
-if (hasHpGasAccess()) {
-    $searchRegionsExtra[] = ['label' => 'HP Gas Search', 'href' => 'hp_gas.php'];
+// Indane Gas Pro (app.cyfuture.co.in "LPG Emergency Helpline") - a separate
+// integration from Indane Gas above, placed directly below it per explicit
+// instruction. Own access flag + count-based monthly quota
+// (indane_gas_pro_access), same pattern as Indane Gas itself.
+if (hasIndaneGasProAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Indane Gas Pro', 'href' => 'indane_gas_pro.php'];
 }
-// RC Print's own standalone sidebar entry (moved below HP Gas Search per
-// explicit instruction, 2026-08-19) - alongside its RC Print tab inside
-// Tracing 2.0 above, same hasRcPrintAccess() flag gates both.
-if (hasRcPrintAccess()) {
-    $searchRegionsExtra[] = ['label' => 'RC Print', 'href' => 'rc_print.php'];
-}
+// Indian Gas Advanced (Nexora's Indane gas connection lookup, 2026-10-04) has no
+// sidebar entry of its own - it is a tab inside All Gas Advanced above (per
+// explicit instruction). indian_gas_api.php itself still works by direct link.
 // Tata Play is opt-in per account (Admin > Agents > "Tata Play Access") -
-// same pattern as HP Gas Search above (own tataplay.py Selenium automation
+// same pattern as HP LPG Search above (own tataplay.py Selenium automation
 // against the distributor's mysso.tataplay.com SSO login, proxied through
 // tataplay_api.php). Placed directly below Indian LPG Search per explicit
 // instruction.
 if (hasTataPlayAccess()) {
     $searchRegionsExtra[] = ['label' => 'TATA SKY DTH', 'href' => 'tataplay.php'];
+}
+// Aadhaar to Ration Finder (locateme.services) - own dedicated access flag +
+// count-based monthly quota, same pattern as RC Print/HP Gas Advanced
+// (own aadhaar_to_ration.py Selenium automation, reusing rc_print.py's
+// locateme.services login, proxied through aadhaar_to_ration_api.php).
+if (hasAadhaarToRationAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Aadhaar to Family Members', 'href' => 'aadhaar_to_ration.php'];
+}
+// Aadhaar to Family Advanced (Nexora's Aadhaar -> ration card + family lookup -
+// the API crm-app-v3's "Aadhaar Family" uses, 2026-10-04), directly below
+// Aadhaar to Family Members. Own access flag (aadhaar_family_api_access).
+if (hasAadhaarFamilyApiAccess()) {
+    $searchRegionsExtra[] = ['label' => 'Aadhaar to Family Advanced', 'href' => 'aadhaar_family_api.php'];
 }
 $selectedState = $_GET['state'] ?? '';
 
@@ -148,7 +229,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'light');</script>
+  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('crm-theme') || 'dark');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DK Search — Data Search</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -163,8 +244,8 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
   <aside class="sidebar" id="sidebar">
     <div class="sidebar__top">
       <a class="sidebar__brand" href="<?= $bp ?>index.php">
-        <img src="<?= $bp ?>assets/img/dk-search-mark.png" alt="DK Search" class="sidebar__brand-logo">
-        <span class="sidebar__brand-text">Data Search</span>
+        <div class="sidebar__brand-icon"><i class="bi bi-diagram-3-fill"></i></div>
+        DK Search
       </a>
       <button class="sidebar__hamburger" id="sidebar-toggle" type="button" aria-label="Toggle menu">
         <i class="bi bi-list"></i>
@@ -189,17 +270,21 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
       <?php foreach ($searchRegionsExtra as $region):
         $isActive = $currentPage === basename($region['href']);
         $thisColorIndex = $navColorIndex++;
-        // Advanced Search's avatar is pinned dark per explicit instruction,
-        // rather than the auto-cycled palette every other item uses -
-        // $navColorIndex still increments normally so it doesn't shift any
-        // other item's color.
-        $avatarColor = $region['label'] === 'Advanced Search' ? '31,41,55' : sidebarNavColor($thisColorIndex);
+        // Advanced Search's and All Gas's avatars are pinned dark (with a bold
+        // label) per explicit instruction, rather than the auto-cycled
+        // palette every other item uses - $navColorIndex still increments
+        // normally so it doesn't shift any other item's color.
+        // These four are pinned dark GREEN instead (2026-10-05, per explicit
+        // instruction) - same bold treatment, DK's own green.
+        $isGreenItem = in_array($region['label'], ['All Gas Advanced', 'Mobile to Delivery Address', 'Mobile to Delivery Address Advanced', 'Indane Gas Pro'], true);
+        $isDarkItem = $isGreenItem || in_array($region['label'], ['Advanced Search', 'All Gas'], true);
+        $avatarColor = $isGreenItem ? '31,122,46' : ($isDarkItem ? '31,41,55' : sidebarNavColor($thisColorIndex));
       ?>
         <a href="<?= preg_match('#^https?://#', $region['href']) ? $region['href'] : $bp . $region['href'] ?>"
-           class="sidebar__item<?= $isActive ? ' active' : '' ?>"
+           class="sidebar__item<?= $isActive ? ' active' : '' ?><?= $isGreenItem ? ' sidebar__item--pinned-green' : ($isDarkItem ? ' sidebar__item--pinned-dark' : '') ?>"
            <?= !empty($region['external']) ? 'target="_blank" rel="noopener noreferrer"' : '' ?>>
           <span class="sidebar__avatar" style="background:rgb(<?= $avatarColor ?>)"><?= strtoupper(substr($region['label'], 0, 1)) ?></span>
-          <?php if ($region['label'] === 'Advanced Search'): ?>
+          <?php if ($isDarkItem): ?>
             <span style="font-weight:700"><?= htmlspecialchars($region['label']) ?></span>
           <?php else: ?>
             <?= htmlspecialchars($region['label']) ?>
@@ -213,15 +298,26 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
 
     <div class="sidebar__section-label">Account</div>
     <nav class="sidebar__group">
-      <?php if ($user['role'] === 'admin'):
+      <a href="#" class="sidebar__item sidebar__item--dark" onclick="openChangePasswordModal(); return false;">
+        <span class="sidebar__icon" style="color:#1f2937"><i class="bi bi-lock-fill"></i></span> Change Password
+      </a>
+      <?php if (in_array($user['role'], ['admin', 'sub_admin'], true)):
+        // sub_admin only gets "Agents" (where its own create/edit caps are
+        // enforced server-side - see admin/agents.php) - every other admin
+        // page here stays real-admin-only, added conditionally below
+        // rather than folded into one array shared by both roles.
         $adminNavItems = [
-          ['page' => 'agents.php',             'href' => 'admin/agents.php',             'icon' => 'bi-people-fill',       'label' => 'Agents'],
-          ['page' => 'logs.php',               'href' => 'admin/logs.php',               'icon' => 'bi-journal-text',      'label' => 'Audit Log'],
-          ['page' => 'import.php',             'href' => 'admin/import.php',             'icon' => 'bi-cloud-upload-fill', 'label' => 'Import'],
-          ['page' => 'ecommerce_import.php',   'href' => 'admin/ecommerce_import.php',   'icon' => 'bi-cart-fill',         'label' => 'E-Comm Import'],
-          ['page' => 'lpg_settings.php',       'href' => 'admin/lpg_settings.php',       'icon' => 'bi-key-fill',          'label' => 'LPG Settings'],
-          ['page' => 'whatsapp_settings.php',  'href' => 'admin/whatsapp_settings.php',  'icon' => 'bi-whatsapp',          'label' => 'WhatsApp Settings'],
+          ['page' => 'agents.php', 'href' => 'admin/agents.php', 'icon' => 'bi-people-fill', 'label' => 'Agents'],
         ];
+        if ($user['role'] === 'admin') {
+          $adminNavItems = array_merge($adminNavItems, [
+            ['page' => 'logs.php',               'href' => 'admin/logs.php',               'icon' => 'bi-journal-text',      'label' => 'Audit Log'],
+            ['page' => 'import.php',             'href' => 'admin/import.php',             'icon' => 'bi-cloud-upload-fill', 'label' => 'Import'],
+            ['page' => 'ecommerce_import.php',   'href' => 'admin/ecommerce_import.php',   'icon' => 'bi-cart-fill',         'label' => 'E-Comm Import'],
+            ['page' => 'lpg_settings.php',       'href' => 'admin/lpg_settings.php',       'icon' => 'bi-key-fill',          'label' => 'LPG Settings'],
+            ['page' => 'whatsapp_settings.php',  'href' => 'admin/whatsapp_settings.php',  'icon' => 'bi-whatsapp',          'label' => 'WhatsApp Settings'],
+          ]);
+        }
         foreach ($adminNavItems as $item):
           $isActive = $currentPage === $item['page'];
           $thisColorIndex = $navColorIndex++;
@@ -259,7 +355,7 @@ $expiresLabel = $expiresAt ? date('d-F-Y', strtotime($expiresAt)) : null;
         <i class="bi bi-calendar3"></i>
         <?= $expiresLabel ? 'Expires: ' . htmlspecialchars($expiresLabel) : 'No expiry' ?>
       </div>
-      <span class="topbar__role topbar__role--<?= $user['role'] ?>"><?= ucfirst($user['role']) ?></span>
+      <span class="topbar__role topbar__role--<?= $user['role'] ?>"><?= $user['role'] === 'sub_admin' ? 'Sub Admin' : ucfirst($user['role']) ?></span>
       <a href="<?= $bp ?>logout.php" class="app-topbar__logout">
         <i class="bi bi-box-arrow-right"></i> Logout
       </a>

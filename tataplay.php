@@ -3,23 +3,6 @@ require __DIR__ . '/includes/auth.php';
 requireTataPlayAccess();
 require_once __DIR__ . '/config/db.php';
 
-// Same quota-badge pattern as hp_gas.php/rc_print.php.
-$isAdmin = ($_SESSION['role'] ?? '') === 'admin';
-$quota = null;
-if (!$isAdmin) {
-    $stmt = $pdo->prepare('SELECT tata_play_monthly_limit FROM users WHERE id = :id');
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $monthlyLimit = (int) $stmt->fetchColumn();
-
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'tata_play' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
-    );
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $usedThisMonth = (int) $stmt->fetchColumn();
-
-    $quota = ['used' => $usedThisMonth, 'limit' => $monthlyLimit];
-}
-
 $basePath = '';
 require __DIR__ . '/includes/header.php';
 ?>
@@ -30,14 +13,6 @@ require __DIR__ . '/includes/header.php';
 
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
   <h1 class="page-title" style="margin:0"><i class="bi bi-tv"></i> TATA SKY DTH</h1>
-  <?php if ($isAdmin): ?>
-    <span id="tpQuotaBadge" class="badge badge-neutral" style="margin-left:auto">Unlimited (Admin)</span>
-  <?php elseif ($quota !== null): ?>
-    <span id="tpQuotaBadge" class="badge <?= $quota['used'] >= $quota['limit'] ? 'badge-danger' : 'badge-neutral' ?>"
-          style="margin-left:auto">
-      <?= $quota['limit'] - $quota['used'] > 0 ? $quota['limit'] - $quota['used'] : 0 ?> of <?= $quota['limit'] ?> left this month
-    </span>
-  <?php endif; ?>
 </div>
 
 <style>
@@ -61,20 +36,6 @@ require __DIR__ . '/includes/header.php';
   @keyframes tp-progress-stripes{from{background-position:0 0;}to{background-position:-34px 0;}}
   .tp-progress-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11.5px;color:#999;}
   .tp-result-wrap{margin-top:16px;display:none;}
-  .tp-section{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;}
-  .tp-section-title{padding:10px 16px;background:#2e9e3f;color:#fff;font-size:11.5px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.4px;}
-  .tp-section-table{width:100%;border-collapse:collapse;}
-  .tp-section-table tr:nth-child(odd){background:#fff;}
-  .tp-section-table tr:nth-child(even){background:#f8f8fc;}
-  .tp-section-table td{padding:8px 16px;font-size:12.5px;border-bottom:1px solid #eee;vertical-align:top;}
-  .tp-section-table tr:last-child td{border-bottom:none;}
-  .tp-field-label{width:38%;color:#777;font-weight:600;}
-  .tp-field-value{color:#222;font-weight:500;word-break:break-word;}
-  .tp-status-chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.3px;background:#eeeef6;color:#555;}
-  .tp-status-chip.tp-status-active{background:rgba(16,185,129,.15);color:#0d9668;}
-  .tp-status-chip.tp-status-bad{background:rgba(248,113,113,.15);color:#dc2626;}
   .tp-not-found{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:16px;color:#f87171;font-weight:600;}
 </style>
 
@@ -105,7 +66,6 @@ const clearBtn       = document.getElementById("tpClearBtn");
 const numberBox      = document.getElementById("tpNumberBox");
 const statusEl       = document.getElementById("tpStatus");
 const resultWrap     = document.getElementById("tpResultWrap");
-const quotaBadge     = document.getElementById("tpQuotaBadge");
 const progressWrap   = document.getElementById("tpProgressWrap");
 const progressLabel  = document.getElementById("tpProgressLabel");
 const progressElapsed= document.getElementById("tpProgressElapsed");
@@ -150,81 +110,108 @@ function stopProgress(finalLabel) {
   }
 }
 
-function updateQuotaBadge(used, limit) {
-  if (!quotaBadge) return;
-  const remaining = Math.max(0, limit - used);
-  quotaBadge.textContent = `${remaining} of ${limit} left this month`;
-  quotaBadge.classList.toggle("badge-danger", used >= limit);
-  quotaBadge.classList.toggle("badge-neutral", used < limit);
-}
+// Only these fields are shown, in this order - Digicard/set-top-box
+// details (Product, Digicard #, Digicomp #, etc.) are dropped entirely per
+// explicit instruction (2026-08-23). Each entry pairs the display column
+// with the matching key on the account object (see Gas/lpg_web/
+// tataplay.py's run_tataplay_single() for the full shape).
+const TP_COLUMNS = [
+  ["Subscriber Name", "accountName"],
+  ["Subscriber Id", "subscriberId"],
+  ["Status", "accountStatus"],
+  ["Account Type", "accountType"],
+  ["Account Category", "accountCategory"],
+  ["Account Sub-Category", "accountSubCategory"],
+  ["Sales Segment", "salesSegment"],
+  ["Address Line 1", "addressLine1"],
+  ["Address Line 2", "addressLine2"],
+  ["Village/Town/City", "villageTownCity"],
+  ["Town", "town"],
+  ["District", "district"],
+  ["Tahsil", "tahsil"],
+  ["State", "state"],
+  ["Pin Code", "pinCode"],
+  ["Last Recharge Date", "lastRechargeDate"],
+];
 
-// Account Status values seen live (2026-08-13): Pending, Deactivated,
-// Cancelled, Cancel-Pending, WrittenOff - "Pending"/anything containing
-// "active" reads as a live-ish account, "cancel"/"written off"/"deactivat"
-// as a dead one; anything else stays a neutral grey chip rather than
-// guessing at a colour for a status this hasn't seen yet.
-function statusChipClass(status) {
-  const s = (status || "").toLowerCase();
-  if (s.includes("cancel") || s.includes("deactivat") || s.includes("writtenoff") || s.includes("written off")) {
-    return "tp-status-bad";
-  }
-  if (s === "pending" || s.includes("active")) return "tp-status-active";
-  return "";
+// A search can genuinely match more than one account for the same mobile
+// number (confirmed live 2026-08-19 - a deactivated account and a pending
+// one for the same person) - each is a real, distinct account (different
+// Subscriber Id/Status), not a fragment of one record, so each gets its
+// own row rather than being merged together the way Indane Gas's
+// same-person fragments are. Same weighted colgroup sizing as pan_india.php/
+// indane_gas_info.php's tables (via .pan-results-table) so long address
+// values wrap within their cell instead of forcing a horizontal scroll.
+function buildTataPlayTable(accounts) {
+  const rows = accounts.map(account => TP_COLUMNS.map(([, key]) => account[key] || "—"));
+
+  const longestToken = value => value.split(/[\s,;]+/).reduce((max, tok) => Math.max(max, tok.length), 0);
+  const rawWeights = TP_COLUMNS.map(([label], i) => {
+    let maxLen = label.length;
+    let maxToken = label.length;
+    rows.forEach(r => {
+      const v = r[i] === "—" ? "" : r[i];
+      maxLen = Math.max(maxLen, v.length);
+      maxToken = Math.max(maxToken, longestToken(v));
+    });
+    return Math.max(Math.sqrt(maxLen) * 5, label.length * 1.5, maxToken * 3.2, 16);
+  });
+  const rawTotal = rawWeights.reduce((a, b) => a + b, 0);
+  const cap = rawTotal * 0.22;
+  const weights = rawWeights.map(w => Math.min(w, cap));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+  const table = document.createElement("table");
+  table.className = "results-table pan-results-table";
+
+  const colgroup = document.createElement("colgroup");
+  weights.forEach(w => {
+    const col = document.createElement("col");
+    col.style.width = (w / totalWeight * 100).toFixed(2) + "%";
+    colgroup.appendChild(col);
+  });
+  table.appendChild(colgroup);
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  TP_COLUMNS.forEach(([label]) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    r.forEach(value => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  return table;
 }
 
 function renderResult(data) {
   resultWrap.innerHTML = "";
 
-  if (!data.found) {
+  const accounts = (data.found && Array.isArray(data.accounts)) ? data.accounts : [];
+
+  if (!accounts.length) {
     resultWrap.innerHTML = `<div class="tp-not-found">Not found for ${data.mobileNumber}.</div>`;
   } else {
-    const box = document.createElement("div");
-    box.className = "tp-section";
-    const title = document.createElement("div");
-    title.className = "tp-section-title";
-    title.textContent = "Account";
-    box.appendChild(title);
-
-    const table = document.createElement("table");
-    table.className = "tp-section-table";
-    const tbody = document.createElement("tbody");
-
-    const rows = [
-      ["Account Name", data.accountName],
-      ["Subscriber Id", data.subscriberId],
-      ["Account Status", data.accountStatus],
-      ["Address", data.address],
-      ["Last Recharge Date", data.lastRechargeDate],
-    ];
-    rows.forEach(([label, value]) => {
-      const tr = document.createElement("tr");
-      const labelTd = document.createElement("td");
-      labelTd.className = "tp-field-label";
-      labelTd.textContent = label;
-      const valueTd = document.createElement("td");
-      valueTd.className = "tp-field-value";
-      if (label === "Account Status") {
-        const chip = document.createElement("span");
-        chip.className = "tp-status-chip " + statusChipClass(value);
-        chip.textContent = value || "—";
-        valueTd.appendChild(chip);
-      } else {
-        valueTd.textContent = value || "—";
-      }
-      tr.append(labelTd, valueTd);
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-    box.appendChild(table);
-    resultWrap.appendChild(box);
+    const wrap = document.createElement("div");
+    wrap.className = "results-table-wrap";
+    wrap.appendChild(buildTataPlayTable(accounts));
+    resultWrap.appendChild(wrap);
   }
 
   resultWrap.style.display = "block";
-  if (data.found) startConfetti(); else stopConfetti();
-  if (typeof data.used === "number" && typeof data.limit === "number") {
-    updateQuotaBadge(data.used, data.limit);
-  }
+  if (accounts.length) startConfetti(); else stopConfetti();
 }
 
 async function runSearch() {
@@ -255,9 +242,6 @@ async function runSearch() {
     if (!res.ok) {
       stopProgress(null);
       statusEl.textContent = `Error: ${data.error || "could not complete search"}`;
-      if (typeof data.used === "number" && typeof data.limit === "number") {
-        updateQuotaBadge(data.used, data.limit);
-      }
       return;
     }
 

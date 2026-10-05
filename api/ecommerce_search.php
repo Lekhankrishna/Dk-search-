@@ -14,6 +14,11 @@ if (!isSessionValid()) {
     echo json_encode(['ok' => false, 'error' => 'Your account was signed in from another device. Please log in again.']);
     exit;
 }
+if (!hasEcommerceAccess()) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'E Commerce access has not been granted for this account.']);
+    exit;
+}
 session_write_close();
 
 require_once __DIR__ . '/../config/db.php';

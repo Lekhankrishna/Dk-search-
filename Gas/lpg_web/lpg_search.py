@@ -679,6 +679,52 @@ def _quit_driver_with_timeout(driver, timeout=15):
     quit_thread.join(timeout)
 
 
+def _type_and_submit(input_el, value, timeout=8):
+    """
+    Fills a locateme.services search <input> with `value` and submits it -
+    used by rc_print.py/hp_gas.py/tracing2_tools.py's own search inputs.
+
+    Confirmed live 2026-09-02: this site rejects Selenium's synthetic
+    keyboard events on its search inputs specifically (send_keys() and even
+    ActionChains produced literally zero characters, every single attempt -
+    not a timing race, since retrying repeatedly over 8s never once got a
+    character through) while the SAME technique typed the login page's
+    email/password fields (rc_print.py's _login()) just fine - this looks
+    like a deliberate anti-scraping measure scoped to the credit-consuming
+    search pages rather than a general bot-detection block (navigator.
+    webdriver reads as unset, same as everywhere else this codebase talks to
+    this site). Enter-key submission is blocked the same way.
+    Setting the value via the native <input> value setter (bypassing
+    whatever wraps .value on this React/Next.js input) and dispatching
+    input/change events updates React's own state correctly - confirmed via
+    get_attribute("value") reflecting it immediately - and clicking the
+    page's own type="submit" button (real mouse click, not a key event)
+    submits it the same way a human clicking it would.
+    """
+    deadline = time.time() + timeout
+    while True:
+        input_el.click()
+        driver = input_el.parent
+        driver.execute_script(
+            """
+            const el = arguments[0], value = arguments[1];
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(el, value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            """,
+            input_el, str(value),
+        )
+        if input_el.get_attribute("value") == str(value):
+            break
+        if time.time() >= deadline:
+            raise RuntimeError(f"Could not type {value!r} into the search box.")
+        time.sleep(0.5)
+
+    submit_btn = input_el.find_element(By.XPATH, "./ancestor::form//button[@type='submit']")
+    driver.execute_script("arguments[0].click();", submit_btn)
+
+
 def run_bulk_search(mobile_numbers, progress_callback=None):
     """
     Runs the SDMS bulk search for the given list of mobile numbers

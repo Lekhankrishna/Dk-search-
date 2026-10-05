@@ -9,11 +9,11 @@
 // as raw page text (see tracing2_tools.py's module docstring).
 //
 // rc-print and hp-gas-advanced (2026-08-17, per explicit instruction) are
-// folded in here as tabs too, replacing the standalone RC Print/HP Gas
+// folded in here as tabs too, replacing the standalone RC Print/HP LPG
 // Search sidebar pages - but each keeps its OWN pre-existing access flag
 // and monthly-limit quota ('requiresAccess' below), rather than falling
 // under tracing2_access's quota. Both were already separately granted per
-// agent (Admin > Agents > "RC Print"/"HP Gas Search") before this change,
+// agent (Admin > Agents > "RC Print"/"HP LPG Search") before this change,
 // and both spend far more credits per search (150 each) than a typical
 // Tracing 2.0 tool - folding them into the shared tracing2_monthly_limit
 // would either strip existing agents of access they already have, or let

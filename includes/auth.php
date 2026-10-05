@@ -37,6 +37,33 @@ function isSessionValid(): bool {
     return $valid;
 }
 
+// Real client IP, not the loopback address of whatever's proxying the
+// request in front of this server (see run_crm_server.ps1's own comment -
+// this site is reached both directly on 127.0.0.1 and via the public
+// datasearch.in router-forward) - X-Forwarded-For first, same precedent
+// already used for search_logs.ip_address in every *_api.php file here,
+// falling back to REMOTE_ADDR for a direct connection.
+function clientIp(): string {
+    return (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '');
+}
+
+// users.allowed_ips is a free-form, comma/newline-separated list of exact
+// IPs (no CIDR ranges - kept simple on purpose, see
+// migrate_add_allowed_ips.sql's own comment) - empty/NULL means
+// unrestricted, same "opt-in, off by default" shape as every other
+// per-account setting in this app. X-Forwarded-For can legitimately carry
+// more than one hop (client, then each proxy in between) as a comma-
+// separated chain - only the first entry (the original client) is checked
+// against the allow-list, not the whole chain.
+function isIpAllowed(?string $allowedIpsRaw, string $requestIp): bool {
+    $allowedIpsRaw = trim((string) $allowedIpsRaw);
+    if ($allowedIpsRaw === '') return true;
+
+    $requestIp = trim(explode(',', $requestIp)[0]);
+    $allowedIps = preg_split('/[\s,]+/', $allowedIpsRaw, -1, PREG_SPLIT_NO_EMPTY);
+    return in_array($requestIp, $allowedIps, true);
+}
+
 function requireLogin(string $loginPath = 'login.php'): void {
     if (!isLoggedIn()) {
         header('Location: ' . $loginPath);
@@ -48,6 +75,23 @@ function requireLogin(string $loginPath = 'login.php'): void {
         header('Location: ' . $loginPath . '?reason=session_replaced');
         exit;
     }
+    // Re-checked every request (not just at login) - an admin adding a
+    // restriction, or an agent's device moving to a different network,
+    // should take effect immediately rather than only on the next fresh
+    // login.
+    global $pdo;
+    static $allowedIps = null;
+    if ($allowedIps === null) {
+        $stmt = $pdo->prepare('SELECT allowed_ips FROM users WHERE id = :id');
+        $stmt->execute(['id' => $_SESSION['user_id']]);
+        $allowedIps = (string) $stmt->fetchColumn();
+    }
+    if (!isIpAllowed($allowedIps, clientIp())) {
+        session_unset();
+        session_destroy();
+        header('Location: ' . $loginPath . '?reason=ip_restricted');
+        exit;
+    }
 }
 
 function requireAdmin(string $loginPath = 'login.php'): void {
@@ -56,6 +100,31 @@ function requireAdmin(string $loginPath = 'login.php'): void {
         http_response_code(403);
         die('Access denied: admin only.');
     }
+}
+
+// sub_admin is a restricted subset of admin: can reach Admin > Agents to
+// create/manage agent accounts (capped at SUB_ADMIN_MAX_AGENTS there, and
+// scoped to only the agents they personally created - see
+// admin/agents.php), but every OTHER admin-only page/right (Audit Log,
+// Import, LPG/WhatsApp Settings) stays real-admin-only - see
+// isSubAdmin()/isMainAdmin() for the distinction call sites need. Not
+// special-cased into any hasXAccess() bypass for the search tools
+// themselves - a sub-admin is a plain agent there, same as anyone else;
+// the only extra power is managing their own slice of agent accounts.
+function requireAdminOrSubAdmin(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!in_array($_SESSION['role'] ?? '', ['admin', 'sub_admin'], true)) {
+        http_response_code(403);
+        die('Access denied: admin only.');
+    }
+}
+
+function isSubAdmin(): bool {
+    return ($_SESSION['role'] ?? '') === 'sub_admin';
+}
+
+function isMainAdmin(): bool {
+    return ($_SESSION['role'] ?? '') === 'admin';
 }
 
 // Checked fresh from the DB on every request (not cached in $_SESSION at
@@ -178,6 +247,29 @@ function requireRcPrintAccess(string $loginPath = 'login.php'): void {
     }
 }
 
+// Same pattern as hasRcPrintAccess() - a separate flag/quota since this is
+// a distinct tool (Aadhaar to Ration Finder) pulled out of Tracing 2.0's
+// shared credit pool into its own dedicated access+quota, same shape as
+// RC Print/HP Gas Advanced.
+function hasAadhaarToRationAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT aadhaar_to_ration_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireAadhaarToRationAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasAadhaarToRationAccess()) {
+        http_response_code(403);
+        die('Access denied: Aadhaar to Family Members access has not been granted for this account.');
+    }
+}
+
 // Same pattern as hasRcPrintAccess() - checked fresh from the DB every
 // request so a revoke from Admin > Agents takes effect immediately. Defaults
 // to NOT granted (see migrate_add_indane_gas_access.sql). Indane Gas Info
@@ -205,6 +297,28 @@ function requireIndaneGasAccess(string $loginPath = 'login.php'): void {
     }
 }
 
+// Same pattern as hasIndaneGasAccess() - a separate flag/quota since this is
+// a distinct integration (app.cyfuture.co.in) from Indane Gas's own
+// locateme.services-backed tool.
+function hasIndaneGasProAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT indane_gas_pro_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireIndaneGasProAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasIndaneGasProAccess()) {
+        http_response_code(403);
+        die('Access denied: Indane Gas Pro access has not been granted for this account.');
+    }
+}
+
 // Same pattern as hasRcPrintAccess() - checked fresh from the DB every
 // request so a revoke from Admin > Agents takes effect immediately.
 function hasHpGasAccess(): bool {
@@ -222,7 +336,7 @@ function requireHpGasAccess(string $loginPath = 'login.php'): void {
     requireLogin($loginPath);
     if (!hasHpGasAccess()) {
         http_response_code(403);
-        die('Access denied: HP Gas Search access has not been granted for this account.');
+        die('Access denied: HP LPG Search access has not been granted for this account.');
     }
 }
 
@@ -243,7 +357,7 @@ function requireTataPlayAccess(string $loginPath = 'login.php'): void {
     requireLogin($loginPath);
     if (!hasTataPlayAccess()) {
         http_response_code(403);
-        die('Access denied: Tata Play Search access has not been granted for this account.');
+        die('Access denied: Tata Sky DTH Search access has not been granted for this account.');
     }
 }
 
@@ -333,6 +447,178 @@ function requireAdvancedSearchAccess(string $loginPath = 'login.php'): void {
     if (!hasAdvancedSearchAccess()) {
         http_response_code(403);
         die('Access denied: Advanced Search access has not been granted for this account.');
+    }
+}
+
+// E Commerce (ecommerce.php / api/ecommerce_search.php) - per-account flag
+// (2026-10-04); existing accounts were defaulted to granted, see
+// database/migrate_add_ecommerce_access.sql.
+function hasEcommerceAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT ecommerce_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireEcommerceAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasEcommerceAccess()) {
+        http_response_code(403);
+        die('Access denied: E Commerce access has not been granted for this account.');
+    }
+}
+
+// All Gas (tracekart.in's Skip Trace "Gas Connection" service) - same
+// pattern as hasAdvancedSearchAccess(), defaults to NOT granted (see
+// database/migrate_add_all_gas.sql).
+function hasAllGasAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT all_gas_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireAllGasAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasAllGasAccess()) {
+        http_response_code(403);
+        die('Access denied: All Gas access has not been granted for this account.');
+    }
+}
+
+// Indian Gas Advanced (Nexora's Indane gas connection lookup, 2026-10-04) - same
+// pattern as hasAllGasAccess(), defaults to NOT granted (see
+// database/migrate_add_indian_gas_api.sql).
+function hasIndianGasApiAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT indian_gas_api_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireIndianGasApiAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasIndianGasApiAccess()) {
+        http_response_code(403);
+        die('Access denied: Indian Gas Advanced access has not been granted for this account.');
+    }
+}
+
+// HP Gas Advanced (Nexora's HP gas connection lookup, 2026-10-04) - same pattern,
+// defaults to NOT granted (see database/migrate_add_hp_gas_api.sql).
+function hasHpGasApiAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT hp_gas_api_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireHpGasApiAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasHpGasApiAccess()) {
+        http_response_code(403);
+        die('Access denied: HP Gas Advanced access has not been granted for this account.');
+    }
+}
+
+// Aadhaar to Family Advanced (Nexora's Aadhaar -> ration card + family lookup,
+// 2026-10-04) - same pattern, defaults to NOT granted (see
+// database/migrate_add_aadhaar_family_api.sql).
+function hasAadhaarFamilyApiAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT aadhaar_family_api_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireAadhaarFamilyApiAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasAadhaarFamilyApiAccess()) {
+        http_response_code(403);
+        die('Access denied: Aadhaar to Family Advanced access has not been granted for this account.');
+    }
+}
+
+// Bharat Gas Advanced (Nexora's Bharat gas connection lookup, 2026-10-04) - same
+// pattern, defaults to NOT granted (see database/migrate_add_bharat_gas_api.sql).
+function hasBharatGasApiAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT bharat_gas_api_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireBharatGasApiAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasBharatGasApiAccess()) {
+        http_response_code(403);
+        die('Access denied: Bharat Gas Advanced access has not been granted for this account.');
+    }
+}
+
+// Mobile to Delivery Address (Nexora API v3 address lookup, 2026-10-04) - same
+// pattern, defaults to NOT granted (see database/migrate_add_mobile_to_address.sql).
+function hasMobileToAddressAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT mobile_to_address_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireMobileToAddressAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasMobileToAddressAccess()) {
+        http_response_code(403);
+        die('Access denied: Mobile to Delivery Address access has not been granted for this account.');
+    }
+}
+
+// Mobile to Delivery Address Advanced (Nexora mobile -> PAN prefill, 2026-10-04) - same
+// pattern, defaults to NOT granted (see database/migrate_add_mobile_address_adv.sql).
+function hasMobileAddressAdvAccess(): bool {
+    global $pdo;
+    if (!isLoggedIn()) return false;
+    static $access = null;
+    if ($access !== null) return $access;
+    $stmt = $pdo->prepare('SELECT mobile_address_adv_access FROM users WHERE id = :id');
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $access = (bool) $stmt->fetchColumn();
+    return $access;
+}
+
+function requireMobileAddressAdvAccess(string $loginPath = 'login.php'): void {
+    requireLogin($loginPath);
+    if (!hasMobileAddressAdvAccess()) {
+        http_response_code(403);
+        die('Access denied: Mobile to Delivery Address Advanced access has not been granted for this account.');
     }
 }
 

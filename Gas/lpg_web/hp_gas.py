@@ -1,15 +1,14 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 
 import time
 
 # Same locateme.services account/login as rc_print.py - reused rather than
 # duplicated (see rc_print.py's own comment on why the Chrome setup itself
 # is imported from lpg_search.py).
-from lpg_search import _create_driver, _quit_driver_with_timeout
-from rc_print import _login
+from lpg_search import _type_and_submit
+from rc_print import _login, _create_locateme_driver, _release_locateme_driver
 
 HP_GAS_URL = "https://locateme.services/tools/hp-gas-advanced"
 
@@ -58,7 +57,7 @@ def run_hp_gas_single(mobile_number):
 
     driver = None
     try:
-        driver = _create_driver(headless=True)
+        driver = _create_locateme_driver()
         wait = WebDriverWait(driver, 20)
 
         _login(driver, wait)
@@ -68,9 +67,7 @@ def run_hp_gas_single(mobile_number):
         number_input = wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Enter 10-digit number']"))
         )
-        number_input.clear()
-        number_input.send_keys(mobile_number)
-        number_input.send_keys(Keys.RETURN)
+        _type_and_submit(number_input, mobile_number)
 
         deadline = time.time() + 30
         while time.time() < deadline:
@@ -96,4 +93,4 @@ def run_hp_gas_single(mobile_number):
 
     finally:
         if driver is not None:
-            _quit_driver_with_timeout(driver)
+            _release_locateme_driver(driver)

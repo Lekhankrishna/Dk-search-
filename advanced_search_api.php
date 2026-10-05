@@ -8,6 +8,7 @@ requireAdvancedSearchAccess();
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/tracekart_client.php';
 require_once __DIR__ . '/includes/tracekart_archive.php';
+require_once __DIR__ . '/includes/search_cache.php';
 
 header('Content-Type: application/json');
 
@@ -32,32 +33,25 @@ if (!isset(TRACEKART_STATES[$state]['modes'][$mode])) {
 }
 $fields = is_array($data['fields'] ?? null) ? $data['fields'] : [];
 
-// Single shared account on tracekart.in's side - every agent is capped per
-// calendar month (Admin > Agents > "Advanced Search Monthly Limit") so one
-// agent can't burn through the whole account's own daily/IP quota alone.
-// Admins bypass this entirely, same as every other tool here.
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    $stmt = $pdo->prepare('SELECT advanced_search_monthly_limit FROM users WHERE id = :id');
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $limit = (int) $stmt->fetchColumn();
-
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'advanced_search' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
-    );
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $usedThisMonth = (int) $stmt->fetchColumn();
-
-    if ($usedThisMonth >= $limit) {
-        http_response_code(429);
-        echo json_encode([
-            'error' => "Monthly Advanced Search limit reached ($usedThisMonth/$limit this month). Contact your admin to increase it, or try again next month.",
-            'used' => $usedThisMonth,
-            'limit' => $limit,
-        ]);
-        exit;
-    }
+// Read-through cache (2026-08-27) - a repeat of the exact same
+// state+mode+fields is served instantly from our own database instead of
+// going through tracekart.in again. Cached forever - see
+// includes/search_cache.php's own header comment for the reasoning. Fields
+// are sorted by key before hashing so the same search submitted with keys
+// in a different order still hits the same cache entry.
+$fieldsForKey = $fields;
+ksort($fieldsForKey);
+$cacheKey = searchCacheKey($state, $mode, json_encode($fieldsForKey));
+$cached = searchCacheGet($pdo, 'search_cache_advanced_search', $cacheKey);
+if ($cached !== null) {
+    searchLogSavedResult($pdo, 'advanced_search', TRACEKART_STATES[$state]['label'] . ': ' . implode(' ', array_filter($fields, fn($v) => trim((string) $v) !== '')), (int) ($cached['totalResults'] ?? 0));
+    echo json_encode($cached);
+    exit;
 }
 
+// No monthly cap (removed 2026-08-12, per explicit instruction) - every
+// agent with access gets unlimited Advanced Search searches. Still logged
+// to search_logs below for Admin > Audit Log either way.
 try {
     $result = tracekartSearch($state, $mode, $fields);
 } catch (Throwable $e) {
@@ -70,8 +64,8 @@ try {
     exit;
 }
 
-// A completed search (found or not) counts against the monthly limit and
-// shows up in Admin > Audit Log.
+// A completed search (found or not) still gets logged for Admin > Audit
+// Log (no monthly limit to enforce anymore).
 try {
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
     $stateLabel = TRACEKART_STATES[$state]['label'];
@@ -87,18 +81,8 @@ try {
     ]);
 
     archiveTracekartResults($result['headers'] ?? [], $result['rows'] ?? [], currentUser()['username'] ?? 'unknown', $mode, $queryText);
-
-    if (($_SESSION['role'] ?? '') !== 'admin') {
-        $stmt = $pdo->prepare('SELECT advanced_search_monthly_limit FROM users WHERE id = :id');
-        $stmt->execute(['id' => $_SESSION['user_id']]);
-        $result['limit'] = (int) $stmt->fetchColumn();
-
-        $stmt = $pdo->prepare(
-            "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'advanced_search' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
-        );
-        $stmt->execute(['id' => $_SESSION['user_id']]);
-        $result['used'] = (int) $stmt->fetchColumn();
-    }
 } catch (PDOException $e) {}
+
+searchCacheStore($pdo, 'search_cache_advanced_search', $cacheKey, $queryText, $result, currentUser()['username'] ?? 'unknown');
 
 echo json_encode($result);

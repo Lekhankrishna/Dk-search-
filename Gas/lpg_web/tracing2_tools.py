@@ -1,13 +1,12 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import StaleElementReferenceException
 
 import time
 
-from lpg_search import _create_driver, _quit_driver_with_timeout
-from rc_print import _login, run_rc_print
+from lpg_search import _type_and_submit
+from rc_print import _login, run_rc_print, _create_locateme_driver, _release_locateme_driver
 from hp_gas import run_hp_gas_single
 
 LOCATEME_BASE = "https://locateme.services/tools"
@@ -107,6 +106,11 @@ FAILURE_NEEDLES = (
     # side, not extraction bugs - surfacing these as a clean "not found"
     # instead of a raw-text dump.
     "api error", "service error", "cooldown",
+    # Confirmed live 2026-09-04 (Aadhaar to Ration): a real upstream data-
+    # source failure, not this scraper mis-locating anything - the site's
+    # own message when its Aadhaar-linked-records backend itself is
+    # unreachable.
+    "connection to registry nodes failed", "please check your network",
 )
 
 
@@ -128,13 +132,25 @@ def _is_loading_placeholder(value):
     return value.rstrip().endswith(("...", "…"))
 
 
+def _is_sentence_label(label):
+    """
+    Field labels are short ("FULL NAME", "CONSUMER ID"); the redesigned tool
+    header (2026-10-03) is a title + a full-sentence subtitle ("Complete
+    consumer profile extraction and agency audit.") built from the same
+    two-<p> shape, and was being returned as the search result. A label
+    that reads like a sentence is never a real field.
+    """
+    label = label.strip()
+    return label.endswith(".") or len(label) > 45 or len(label.split()) > 6
+
+
 def _field_pairs_within(root):
     fields = []
     for el in root.find_elements(By.XPATH, FIELD_PAIR_XPATH):
         ps = el.find_elements(By.XPATH, ".//p")
         label = ps[0].text.strip()
         value = ps[1].text.strip()
-        if label and not _is_loading_placeholder(value):
+        if label and not _is_sentence_label(label) and not _is_loading_placeholder(value):
             fields.append({"label": label, "value": value})
     return fields
 
@@ -177,7 +193,7 @@ def _extract_sections(root):
             continue
         label = ps[0].text.strip()
         value = ps[1].text.strip()
-        if label and not _is_loading_placeholder(value):
+        if label and not _is_sentence_label(label) and not _is_loading_placeholder(value):
             current["fields"].append({"label": label, "value": value})
 
     return [s for s in sections if s["fields"]]
@@ -279,6 +295,23 @@ def _main_text(driver):
     return root.text
 
 
+def _records_signature(records):
+    """Comparable fingerprint of extracted records (labels + values)."""
+    return tuple(
+        (r.get("name", ""), tuple((f["label"], f["value"]) for f in r.get("fields", [])))
+        for r in records
+    )
+
+
+def _scan_in_progress(input_el):
+    """True while the tool's own submit button is disabled (scan running)."""
+    try:
+        buttons = input_el.find_elements(By.XPATH, "./ancestor::form//button[@type='submit']")
+    except Exception:
+        return False
+    return bool(buttons) and buttons[0].get_attribute("disabled") is not None
+
+
 def run_tool_search(tool_slug, query):
     """
     Logs into locateme.services and runs the given tool for one query value,
@@ -317,7 +350,7 @@ def run_tool_search(tool_slug, query):
 
     driver = None
     try:
-        driver = _create_driver(headless=True)
+        driver = _create_locateme_driver()
         wait = WebDriverWait(driver, 20)
 
         _login(driver, wait)
@@ -331,23 +364,81 @@ def run_tool_search(tool_slug, query):
         input_el = wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input:not([type='hidden'])"))
         )
-        input_el.clear()
-        input_el.send_keys(query)
-        input_el.send_keys(Keys.RETURN)
 
-        deadline = time.time() + 30
+        # What the page shows BEFORE searching (2026-10-03, confirmed live
+        # on Indane Gas): the redesigned tool header is itself a two-<p>
+        # title/subtitle pair, so the generic extractor "found" it instantly
+        # and returned the page subtitle as the result - before the real
+        # scan had even started - leaving every column blank. Anything
+        # identical to this pre-search snapshot is never treated as a result.
+        # Let the page finish drawing first - a snapshot taken mid-render
+        # (header not painted yet) let the header through as "new" content,
+        # blanking ~85 real agent searches on 2026-10-03.
+        time.sleep(1.5)
+        baseline = _records_signature(_extract_records(driver))
+        baseline_text = _main_text(driver).lower()
+
+        _type_and_submit(input_el, query)
+
+        # Don't read anything until the scan has visibly started (the site
+        # disables its own submit button while scanning) - up to 6s for it
+        # to kick in; tools that never disable the button just proceed.
+        submitted_at = time.time()
+        started_by = time.time() + 6
+        scan_started = False
+        while time.time() < started_by:
+            if _scan_in_progress(input_el):
+                scan_started = True
+                break
+            time.sleep(0.25)
+
+        # A scan now takes ~7-30s on the site's side (it was ~2-8s).
+        deadline = time.time() + 45
+        scan_done_at = None
         while time.time() < deadline:
             try:
+                # The site disables its own submit button while a scan is in
+                # flight - nothing on the page is final until it re-enables.
+                if _scan_in_progress(input_el):
+                    time.sleep(1)
+                    continue
+                if scan_started and scan_done_at is None:
+                    scan_done_at = time.time()
+
+                # Records first: a real result can itself contain words like
+                # "not found"/"invalid" as field values (confirmed 2026-10-03,
+                # a genuine hit was discarded as a miss when the failure-text
+                # check ran first). Failure text only counts when no result.
+                records = _extract_records(driver)
+                if records and _records_signature(records) != baseline:
+                    return {"toolSlug": tool_slug, "query": query, "found": True, "records": records}
+
                 page_text = _main_text(driver)
                 lower = page_text.lower()
 
                 for needle in FAILURE_NEEDLES:
-                    if needle in lower:
+                    if needle in lower and needle not in baseline_text:
                         return {"toolSlug": tool_slug, "query": query, "found": False}
 
-                records = _extract_records(driver)
-                if records:
-                    return {"toolSlug": tool_slug, "query": query, "found": True, "records": records}
+                # The scan has finished and still nothing new on the page:
+                # that's how the redesigned site reports a miss (confirmed
+                # live 2026-10-03 - a "retrieved successfully" toast, no
+                # result card, no credits charged). A short grace period
+                # covers the result card rendering just after the button
+                # re-enables.
+                if scan_done_at is not None and time.time() - scan_done_at > 6:
+                    # A scan that ran right up to the site's own ~30s limit
+                    # and produced nothing is the site's data source timing
+                    # out, not a real "no record" (confirmed live 2026-10-03:
+                    # genuine misses finish in ~7s, hits in ~7-10s, while a
+                    # source outage made EVERY scan end at ~30-31s empty,
+                    # even for numbers found an hour earlier). Reported as an
+                    # error, so it isn't shown as "not found", doesn't count
+                    # against the agent's quota and isn't cached.
+                    if scan_done_at - submitted_at >= 28:
+                        label = TOOL_REGISTRY.get(tool_slug, {}).get("label", "This tool")
+                        raise RuntimeError(f"{label} source is not responding right now - please try again later.")
+                    return {"toolSlug": tool_slug, "query": query, "found": False}
             except StaleElementReferenceException:
                 # The page's own React app can swap DOM nodes out from under
                 # us mid-read (confirmed 2026-08-17, live on Aadhaar to
@@ -375,4 +466,4 @@ def run_tool_search(tool_slug, query):
 
     finally:
         if driver is not None:
-            _quit_driver_with_timeout(driver)
+            _release_locateme_driver(driver)

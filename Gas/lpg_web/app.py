@@ -10,6 +10,8 @@ from rc_print import run_rc_print
 from hp_gas import run_hp_gas_single
 from tataplay import run_tataplay_single
 from tracing2_tools import run_tool_search, TOOL_REGISTRY
+from indane_gas_pro import search_indane_gas_pro
+from aadhaar_to_ration import run_aadhaar_to_ration
 
 app = Flask(__name__)
 
@@ -35,6 +37,17 @@ def clean_error_message(e):
     # generic fallback below instead of showing that half-formed leftover.
     if first_line.lower().startswith("message:"):
         first_line = first_line[len("message:"):].strip()
+    # rc_print.py's _login() (reused by hp_gas.py, tracing2_tools.py, and
+    # aadhaar_to_ration.py through it) raises "locateme.services login
+    # failed: <reason>"/"...login timed out..." for things like the shared
+    # account's IP restriction tripping - confirmed live 2026-09-05, an
+    # agent saw the raw "locateme.services login failed: access restricted"
+    # text. That's an infrastructure problem on the shared account, not
+    # anything the agent did or can act on, so it gets the same generic
+    # "Server is down" message every other unreachable-service case here
+    # already shows instead of a raw internal string.
+    if first_line.lower().startswith("locateme.services login"):
+        return "Server is down. Please try again later."
     return first_line or "An unexpected error occurred. Please try again or contact your admin."
 
 # Runs centrally on the CRM server itself (found 2026-07-27) rather than one
@@ -251,6 +264,27 @@ def rc_print():
     return jsonify(result)
 
 
+@app.route("/api/aadhaar-to-ration", methods=["POST"])
+def aadhaar_to_ration():
+    data = request.get_json(silent=True) or {}
+    aadhaar_number = str(data.get("aadhaarNumber", "")).strip()
+
+    if not aadhaar_number:
+        return jsonify({"error": "No Aadhaar number provided"}), 400
+
+    # Same shape as /api/rc-print - single lookup, synchronous, sharing
+    # selenium_semaphore with everything else here.
+    with selenium_semaphore:
+        try:
+            result = run_aadhaar_to_ration(aadhaar_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[aadhaar-to-ration {aadhaar_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
 @app.route("/api/hp-gas", methods=["POST"])
 def hp_gas():
     data = request.get_json(silent=True) or {}
@@ -267,6 +301,31 @@ def hp_gas():
         except Exception as e:
             full_trace = traceback.format_exc()
             print(f"[hp-gas {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/indane-gas-pro", methods=["POST"])
+def indane_gas_pro():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print/hp-gas/tataplay - single lookup,
+    # synchronous, sharing selenium_semaphore with everything else here.
+    # Tries all three OMCs (IOCL/HPCL/BPCL) internally via the site's own
+    # read-only consumer-lookup modal (see indane_gas_pro.py's own comment -
+    # never the Query Form's complaint-creating Submit button), so this
+    # endpoint only ever takes a mobile number, same as hp-gas/tataplay.
+    with selenium_semaphore:
+        try:
+            result = search_indane_gas_pro(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[indane-gas-pro {mobile_number}] FAILED:\n{full_trace}")
             return jsonify({"error": clean_error_message(e)}), 502
 
     return jsonify(result)

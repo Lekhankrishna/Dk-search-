@@ -371,7 +371,7 @@ switch ($type) {
         $raw = trim($_GET['mobiles'] ?? '');
         if ($raw === '') { echo json_encode(['ok'=>false,'error'=>'Mobile numbers required']); exit; }
         // Bulk lookup is admin-only, with no cap on how many numbers are pasted.
-        if (($_SESSION['role'] ?? '') !== 'admin') { echo json_encode(['ok'=>false,'error'=>'Bulk search is available to admins only. Search one number at a time.']); exit; }
+        if (!isMainAdmin()) { echo json_encode(['ok'=>false,'error'=>'Bulk search is available to admins only. Search one number at a time.']); exit; }
         $numbers = array_values(array_unique(preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY)));
         if (empty($numbers)) { echo json_encode(['ok'=>false,'error'=>'Mobile numbers required']); exit; }
         $queryMode = 'in';

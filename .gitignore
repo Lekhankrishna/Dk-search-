@@ -74,3 +74,12 @@ __pycache__/
 
 # Stray editor/manual backup copies of tracked files.
 *.bak-*
+
+# Scratch captures of vendor login sessions (cookies, headers, HTML) - live
+# session data, not source.
+/.scratch_*
+
+# MadelineProto runtime downloaded on demand at the repo root, not source.
+/madeline-*.phar
+/madeline-*.phar.lock
+/madeline.version

@@ -11,6 +11,7 @@ require __DIR__ . '/includes/auth.php';
 requireRcPrintAccess();
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/rcprint_archive.php';
+require_once __DIR__ . '/includes/search_cache.php';
 
 header('Content-Type: application/json');
 
@@ -38,13 +39,17 @@ if ($vehicleNumber === '' || strlen($vehicleNumber) < 4 || strlen($vehicleNumber
 // entirely - same admin-vs-agent split as LPG's number cap. Checked fresh
 // from search_logs every request (not cached) so a same-month admin change
 // or the start-of-month reset takes effect immediately, not just next login.
+// Checked BEFORE the cache lookup below (2026-10-02, per explicit
+// instruction: a cached result is still a result handed to the agent, so it
+// must still be blocked once their quota is exhausted, exactly like a live
+// fetch - a cache hit is no longer a free pass around the monthly limit).
 if (($_SESSION['role'] ?? '') !== 'admin') {
     $stmt = $pdo->prepare('SELECT rc_print_monthly_limit FROM users WHERE id = :id');
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $limit = (int) $stmt->fetchColumn();
 
     $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'rc_print' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
+        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'rc_print' AND result_count > 0 AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
     );
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $usedThisMonth = (int) $stmt->fetchColumn();
@@ -58,6 +63,47 @@ if (($_SESSION['role'] ?? '') !== 'admin') {
         ]);
         exit;
     }
+}
+
+// Read-through cache (2026-08-27). Cached forever - see
+// includes/search_cache.php's own header comment for the reasoning. Note
+// this changes archiveRcPrintResult()'s original "no dedup, every search is
+// a fresh snapshot" behavior for repeat searches specifically - a cache hit
+// replays the same PDF instead of generating a new one, a deliberate
+// trade-off of the same "cache forever" choice applied to every tool here.
+// used/limit are left out of the cached payload and recomputed fresh below
+// on every response so they never go stale. A hit still logs to
+// search_logs and counts against the monthly limit above, same as a live
+// fetch (2026-10-02 - see comment above the limit check). Only a "found"
+// result is ever cached (see the searchCacheStore call below), so a hit
+// always means result_count = 1.
+$cacheKey = searchCacheKey($vehicleNumber);
+$cached = searchCacheGet($pdo, 'search_cache_rc_print', $cacheKey);
+if ($cached !== null) {
+    try {
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+        $pdo->prepare(
+            "INSERT INTO search_logs (user_id, search_type, search_query, result_count, ip_address)
+             VALUES (:uid, 'rc_print', :q, 1, :ip)"
+        )->execute(['uid' => $_SESSION['user_id'], 'q' => $vehicleNumber, 'ip' => substr($ip, 0, 45)]);
+    } catch (PDOException $e) {}
+
+    if (($_SESSION['role'] ?? '') !== 'admin') {
+        try {
+            $stmt = $pdo->prepare('SELECT rc_print_monthly_limit FROM users WHERE id = :id');
+            $stmt->execute(['id' => $_SESSION['user_id']]);
+            $cached['limit'] = (int) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'rc_print' AND result_count > 0 AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
+            );
+            $stmt->execute(['id' => $_SESSION['user_id']]);
+            $cached['used'] = (int) $stmt->fetchColumn();
+        } catch (PDOException $e) {}
+    }
+    http_response_code(200);
+    echo json_encode($cached);
+    exit;
 }
 
 $ch = curl_init(FLASK_BASE . '/api/rc-print');
@@ -102,7 +148,7 @@ if ($httpCode === 200 && is_array($decoded) && !empty($decoded['pdfDataUri'])) {
             $decoded['limit'] = (int) $stmt->fetchColumn();
 
             $stmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'rc_print' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
+                "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'rc_print' AND result_count > 0 AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
             );
             $stmt->execute(['id' => $_SESSION['user_id']]);
             $decoded['used'] = (int) $stmt->fetchColumn();
@@ -112,6 +158,10 @@ if ($httpCode === 200 && is_array($decoded) && !empty($decoded['pdfDataUri'])) {
     } catch (PDOException $e) {}
 
     archiveRcPrintResult($decoded['pdfDataUri'], $vehicleNumber, currentUser()['username'] ?? 'unknown');
+
+    $toCache = $decoded;
+    unset($toCache['used'], $toCache['limit']);
+    searchCacheStore($pdo, 'search_cache_rc_print', $cacheKey, $vehicleNumber, $toCache, currentUser()['username'] ?? 'unknown');
 }
 
 http_response_code($httpCode ?: 200);

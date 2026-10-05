@@ -8,6 +8,7 @@ require __DIR__ . '/includes/auth.php';
 requireTataPlayAccess();
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/tataplay_archive.php';
+require_once __DIR__ . '/includes/search_cache.php';
 
 header('Content-Type: application/json');
 
@@ -28,30 +29,17 @@ if (strlen($mobileNumber) !== 10) {
     exit;
 }
 
-// Same monthly-cap pattern as hp_gas_api.php/rc_print_api.php - this is a
-// real login against the distributor's own Tata Play account, so every
-// agent is capped per calendar month (Admin > Agents > "Tata Play Monthly
-// Limit"). Admins bypass this entirely.
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    $stmt = $pdo->prepare('SELECT tata_play_monthly_limit FROM users WHERE id = :id');
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $limit = (int) $stmt->fetchColumn();
-
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'tata_play' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
-    );
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $usedThisMonth = (int) $stmt->fetchColumn();
-
-    if ($usedThisMonth >= $limit) {
-        http_response_code(429);
-        echo json_encode([
-            'error' => "Monthly Tata Play limit reached ($usedThisMonth/$limit this month). Contact your admin to increase it, or try again next month.",
-            'used' => $usedThisMonth,
-            'limit' => $limit,
-        ]);
-        exit;
-    }
+// Read-through cache (2026-08-27) - a repeat search for the same number is
+// served instantly from our own database instead of going through the SSO
+// login + Siebel PRM quick-find again. Cached forever - see
+// includes/search_cache.php's own header comment for the reasoning.
+$cacheKey = searchCacheKey($mobileNumber);
+$cached = searchCacheGet($pdo, 'search_cache_tata_play', $cacheKey);
+if ($cached !== null) {
+    searchLogSavedResult($pdo, 'tata_play', $mobileNumber, !empty($cached['found']) ? count($cached['accounts'] ?? []) : 0);
+    http_response_code(200);
+    echo json_encode($cached);
+    exit;
 }
 
 $ch = curl_init(FLASK_BASE . '/api/tataplay');
@@ -73,13 +61,14 @@ if ($response === false) {
     exit;
 }
 
-// Only a genuinely completed lookup counts against the monthly limit and
-// shows up in Admin > Audit Log - a failed login, timeout, or unreachable
-// service isn't the agent's fault. "found": false still counts as a
-// completed search, same reasoning as hp_gas_api.php.
+// A genuinely completed lookup still gets logged for Admin > Audit Log
+// (no monthly limit to enforce anymore) - a failed login, timeout, or
+// unreachable service isn't the agent's fault. "found": false still
+// counts as a completed search, same reasoning as hp_gas_api.php.
 $decoded = json_decode($response, true);
 if ($httpCode === 200 && is_array($decoded) && array_key_exists('found', $decoded)) {
     try {
+        $accounts = $decoded['found'] ? ($decoded['accounts'] ?? []) : [];
         $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         $pdo->prepare(
             "INSERT INTO search_logs (user_id, search_type, search_query, result_count, ip_address)
@@ -87,35 +76,45 @@ if ($httpCode === 200 && is_array($decoded) && array_key_exists('found', $decode
         )->execute([
             'uid' => $_SESSION['user_id'],
             'q' => $mobileNumber,
-            'cnt' => $decoded['found'] ? 1 : 0,
+            'cnt' => count($accounts),
             'ip' => substr($ip, 0, 45),
         ]);
-
-        if (($_SESSION['role'] ?? '') !== 'admin') {
-            $stmt = $pdo->prepare('SELECT tata_play_monthly_limit FROM users WHERE id = :id');
-            $stmt->execute(['id' => $_SESSION['user_id']]);
-            $decoded['limit'] = (int) $stmt->fetchColumn();
-
-            $stmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM search_logs WHERE user_id = :id AND search_type = 'tata_play' AND searched_at >= DATE_FORMAT(NOW(), '%Y-%m-01')"
-            );
-            $stmt->execute(['id' => $_SESSION['user_id']]);
-            $decoded['used'] = (int) $stmt->fetchColumn();
-
-            $response = json_encode($decoded);
-        }
     } catch (PDOException $e) {}
 
-    if (!empty($decoded['found'])) {
+    // A search can genuinely match more than one account (see
+    // tataplay.py's run_tataplay_single()) - archive each one; already
+    // deduped per subscriber id + status inside archiveTataPlayResult()
+    // itself, so this is safe to call once per account. tataplay.py
+    // returns the address as separate fields now (Address Line 1/2,
+    // Village/Town/City, Town, District, Tahsil, State, Pin Code) - the
+    // archive's own CSV format stays a single "Address" column, built by
+    // joining them here rather than growing the CSV to match every new
+    // field this round added.
+    foreach ($accounts as $account) {
+        $addressParts = array_filter([
+            $account['addressLine1'] ?? '',
+            $account['addressLine2'] ?? '',
+            $account['villageTownCity'] ?? '',
+            $account['town'] ?? '',
+            $account['district'] ?? '',
+            $account['tahsil'] ?? '',
+            $account['state'] ?? '',
+            $account['pinCode'] ?? '',
+        ], fn($v) => $v !== '');
         archiveTataPlayResult(
-            $decoded['accountName'] ?? '',
-            $decoded['subscriberId'] ?? '',
-            $decoded['accountStatus'] ?? '',
-            $decoded['address'] ?? '',
-            $decoded['lastRechargeDate'] ?? '',
+            $account['accountName'] ?? '',
+            $account['subscriberId'] ?? '',
+            $account['accountStatus'] ?? '',
+            implode(', ', $addressParts),
+            $account['lastRechargeDate'] ?? '',
             currentUser()['username'] ?? 'unknown',
             $mobileNumber
         );
+    }
+
+    // Only real results are cached (see tracing2_api.php's same rule).
+    if (!empty($decoded['found'])) {
+        searchCacheStore($pdo, 'search_cache_tata_play', $cacheKey, $mobileNumber, $decoded, currentUser()['username'] ?? 'unknown');
     }
 }
 

@@ -11,8 +11,8 @@ const LPG_ARCHIVE_DIR = 'D:/LpgSearchArchive';
 const LPG_ARCHIVE_CSV = LPG_ARCHIVE_DIR . '/records.csv';
 const LPG_ARCHIVE_INDEX = LPG_ARCHIVE_DIR . '/dedup_index.txt';
 
-// Same keys lpg_search.php's renderResults() reads off each record
-// (r["Mobile Number"], r["Alternate Number"], etc).
+// Same keys lpg_search.php/lpg_bulk_search.php's renderResults() reads off
+// each record (r["Mobile Number"], r["Alternate Number"], etc).
 const LPG_ARCHIVE_COLUMNS = [
     'Mobile Number', 'Alternate Number', 'Full Name', 'DOB',
     'Relationship Id', 'Address', 'Country', 'Pin Code', 'Urban/Rural',

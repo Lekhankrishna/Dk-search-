@@ -15,6 +15,11 @@ if (!isLoggedIn() || !isSessionValid()) {
     ]);
     exit;
 }
+if (!hasPanIndiaAccess()) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Access denied: PAN India access has not been granted for this account.']);
+    exit;
+}
 
 // Real enforcement, not just hiding the sidebar link - a revoked agent who
 // already has pan_india.php open (or hits this endpoint directly) must not
@@ -25,9 +30,11 @@ if (!hasPanIndiaAccess()) {
     exit;
 }
 
+require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/telegram_worker_client.php';
 require_once __DIR__ . '/../includes/pan_india_archive.php';
-set_time_limit(60);
+require_once __DIR__ . '/../includes/search_cache.php';
+set_time_limit(210);
 
 // No ": never" return type - that's PHP 8.1+ only, and this file needs to
 // parse on PHP 7.4 (found 2026-08-06: the production IIS site serves PHP
@@ -66,7 +73,16 @@ try {
     if ($type === 'contact') {
         $query = normalizeContactQuery($query);
     }
-    $response = telegramWorkerRequest(['action' => 'search', 'query' => $query], 30);
+
+    // Read-through cache (2026-08-27) - a repeat of the exact same search
+    // (type+query) is served instantly from our own database instead of
+    // going through the Telegram bot again. Cached forever - see
+    // includes/search_cache.php's own header comment for the reasoning.
+    $cacheKey = searchCacheKey($type, $query);
+    $cached = searchCacheGet($pdo, 'search_cache_pan_india', $cacheKey);
+    if ($cached !== null) reply(200, $cached);
+
+    $response = telegramWorkerRequest(['action' => 'search', 'query' => $query], 190);
     if (empty($response['ok'])) {
         // Never forward the worker's own error text to the client - it can
         // name the underlying provider or its exact failure mode. Agents
@@ -74,6 +90,7 @@ try {
         reply(503, ['ok' => false, 'error' => 'Server is down. Please try again later.']);
     }
     archivePanIndiaResults($response['results'] ?? [], currentUser()['username'] ?? 'unknown', $type, $query);
+    searchCacheStore($pdo, 'search_cache_pan_india', $cacheKey, "$type: $query", $response, currentUser()['username'] ?? 'unknown');
     reply(200, $response);
 } catch (Throwable $e) {
     // Same reasoning: connection refused, timeout, malformed response, etc.
