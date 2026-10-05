@@ -1,5 +1,17 @@
-# Copy this file to config.py and fill in the real SDMS login used by the
-# Selenium automation in lpg_search.py. Never commit the real file - it's
+# Copy this file to config.py and fill in the real values used by the
+# Selenium automations in this folder. Never commit the real file - it's
 # gitignored.
 USERNAME = "REPLACE_WITH_REAL_SDMS_USERNAME"
 PASSWORD = "REPLACE_WITH_REAL_SDMS_PASSWORD"
+
+# Used by rc_print.py (and hp_gas.py, which reuses rc_print.py's login).
+LOCATEME_EMAIL = "REPLACE_WITH_REAL_LOCATEME_EMAIL"
+LOCATEME_PASSWORD = "REPLACE_WITH_REAL_LOCATEME_PASSWORD"
+
+# Used by tataplay.py (Tata Play distributor SSO, mysso.tataplay.com).
+TATAPLAY_USERNAME = "REPLACE_WITH_REAL_TATAPLAY_USERNAME"
+TATAPLAY_PASSWORD = "REPLACE_WITH_REAL_TATAPLAY_PASSWORD"
+
+# Used by indane_gas_pro.py (app.cyfuture.co.in "LPG Emergency Helpline").
+CYFUTURE_USERNAME = "REPLACE_WITH_REAL_CYFUTURE_USERNAME"
+CYFUTURE_PASSWORD = "REPLACE_WITH_REAL_CYFUTURE_PASSWORD"

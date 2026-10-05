@@ -172,7 +172,7 @@ require __DIR__ . '/../includes/header.php';
       Imported into <strong><?= htmlspecialchars($summary['selectedState']) ?></strong>
       (<code><?= htmlspecialchars($summary['targetTable']) ?></code>) —
       processed <strong><?= $summary['totalDataRows'] ?></strong> row(s),
-      <strong><?= $summary['inserted'] ?></strong> inserted,    
+      <strong><?= $summary['inserted'] ?></strong> inserted,
       <strong><?= count($summary['skipped']) ?></strong> skipped.
       <?php if ($hasSkipped): ?>
         <ul class="skipped-list">

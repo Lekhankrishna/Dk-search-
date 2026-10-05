@@ -1,0 +1,70 @@
+# CRM Portal
+
+Internal CRM/data-search portal used by agents to look up customer records across multiple states, e-commerce orders, and a range of third-party lookup tools (PAN India, Advance Pan India, Night Out, RC Print, HP LPG Search, Advanced Search, IndianOil LPG Search) — plus an admin panel for account management, per-agent feature access, and monthly usage caps on the tools that run against a shared vendor account.
+
+## Features
+
+- **State-wise customer search** (`index.php`) — Tamil Nadu, Andhra Pradesh, Karnataka, Kerala; searchable by mobile number, name, address, name+father, name+DOB, name+address, identity document, or full address.
+- **E-Commerce order search** (`ecommerce.php`) — separate data shape (delivery date, coordinates, no father's name/DOB), with its own bulk CSV import.
+- **Pan India Search** (`pan_india.php`) — email/Aadhaar/contact-number lookup against a Telegram bot via a persistent PHP MadelineProto worker (`cli/telegram_worker.php`).
+- **Advance Pan India** (`advance_pan_india.php`) — plain PHP+curl client against a Django-backed vendor site (`includes/eagleeye_client.php`).
+- **Night Out** (`pan_india_pro.php`) — plain PHP+curl client against a JSON REST API (`includes/pan_india_pro_client.php`).
+- **RC Print** / **HP LPG Search** (`rc_print.php`, `hp_gas.php`) — Selenium automation against a shared Firebase-backed vendor account (`Gas/lpg_web/`), each with its own per-agent monthly search cap.
+- **Indian LPG Search / Indian LPG Bulk Search** (`lpg_search.php`, `lpg_bulk_search.php`) — looks up IndianOil SDMS gas-connection records via the same Flask/Selenium service.
+- **Advanced Search** (`advanced_search.php`) — plain PHP+curl client against an ASP.NET Core site with five separate per-region endpoints (`includes/tracekart_client.php`).
+- **WhatsApp contact button** — a site-wide floating button, admin-configurable (global on/off plus a per-user allowlist).
+- **Admin panel** (`admin/`) — account management (create/disable/delete, expiry dates), per-agent feature access + monthly usage caps, multi-device login limits, audit log, Excel export of the accounts list, and bulk import tools for state/e-commerce data.
+
+Every search tool is opt-in per account (off by default) and enforced both in the sidebar (hidden if not granted) and server-side in each tool's own API endpoint — granted from **Admin → Agents**. Results from every tool auto-archive to a deduplicated CSV on a separate drive, independent of the CRM's own database.
+
+## Tech stack
+
+- PHP 8.x + MySQL (PDO)
+- Python/Flask + Selenium for the LPG Search, RC Print, and HP Gas services
+- PHP (MadelineProto) for the Telegram-backed Pan India worker
+- Plain PHP+curl clients (no browser automation) for Advance Pan India, Night Out, and Advanced Search
+- Vanilla JS/CSS frontend, no build step
+
+## Requirements
+
+- PHP 8.2+ (curl, fileinfo, gd, gmp, mbstring, mysqli/pdo_mysql, openssl, sockets)
+- MySQL/MariaDB
+- Python 3 + Selenium + a matching ChromeDriver, only if LPG Search / RC Print / HP Gas are used (see `Gas/lpg_web/`)
+- A Telegram account with API credentials, only if Pan India search is used (see `PAN_INDIA_DEPLOYMENT.md`)
+
+## Setup
+
+1. **Config files** — copy each `.example` file and fill in real values (the real files are gitignored, never commit them):
+   ```
+   config/db.php.example       -> config/db.php
+   config/secrets.php.example  -> config/secrets.php
+   config/telegram.php.example -> config/telegram.php   (only needed for Pan India Search)
+   ```
+2. **Database** — create the database, then run `database/schema.sql`, `database/schema_states.sql`, `database/schema_ecommerce.sql`, and every `database/migrate_*.sql` file in the order they were added (each has a comment explaining what it does and its default for existing rows).
+3. **Web server** — run through the included router, which blocks direct access to `config/`, `database/`, `.git/`, and other non-public paths (don't serve this without it):
+   ```
+   php -S 127.0.0.1:8080 -t . .runtime/router.php
+   ```
+   `run_crm_server.bat` / `run_crm_server.ps1` do this plus start the Telegram worker in one step, for local Windows use. `web.config` includes an IIS reverse-proxy rule for the LPG tool if deploying under IIS instead.
+4. Log in with an account created directly in the `users` table (see `database/schema.sql`), then use Admin > Agents to create the rest.
+5. **Optional: LPG Search / RC Print / HP Gas service** — see `Gas/lpg_web/README.txt`. Requires Python, Selenium, and Chrome/Chromedriver on the host. Runs as a Flask service (default port 9197) that the relevant `*_api.php` proxies to over loopback; `Gas/lpg_web/run_lpg_service.bat` also restarts it if it stops responding.
+6. **Optional: Pan India Search** — see `PAN_INDIA_DEPLOYMENT.md` for the Telegram worker setup, one-time QR login, required PHP extensions, and what not to commit (session files, downloaded runtime, real API credentials). `cli/telegram_worker.php` is a long-running process (default port 8091) that `api/pan_india.php` talks to over loopback.
+
+## Project structure
+
+```
+admin/        Admin panel (agents, imports, settings)
+api/          JSON API endpoints
+cli/          Command-line scripts (imports, Telegram worker)
+config/       Environment config (gitignored except *.example)
+database/     Schema + migrations
+Gas/          LPG Search / RC Print / HP Gas Flask+Selenium service
+includes/     Shared PHP includes (auth, header/footer, per-tool clients/archives)
+assets/       CSS
+```
+
+## Security notes
+
+- `config/db.php`, `config/secrets.php`, `config/telegram.php`, and `.runtime/` are gitignored — they hold real credentials and session state and must never be committed.
+- Feature access for every search tool is per-user and off by default for new accounts.
+- Tools that run against a shared vendor account (RC Print, HP Gas, Advance Pan India, Night Out, Advanced Search) also carry a per-agent monthly search cap, since each search spends real credits/quota on that shared account.

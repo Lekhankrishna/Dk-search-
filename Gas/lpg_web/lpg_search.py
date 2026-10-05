@@ -5,6 +5,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import WebDriverException
 
+import datetime
+import re
 import threading
 import time
 
@@ -301,6 +303,192 @@ def _read_grid_field(driver, role_description):
         return ""
 
 
+# SDMS's own Delivery Date format ("25-Jun-2026") - distinct from Tata
+# Play's DD/MM/YYYY hh:mm:ss AM/PM, so this needs its own parser rather than
+# reusing anything from tataplay.py.
+_SDMS_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_SDMS_DATE_RE = re.compile(r"(\d{1,2})-([A-Za-z]{3})-(\d{4})")
+
+
+def _parse_sdms_date(raw):
+    m = _SDMS_DATE_RE.search(raw or "")
+    if not m:
+        return None
+    day, mon, year = m.groups()
+    month = _SDMS_MONTHS.get(mon.lower())
+    if not month:
+        return None
+    try:
+        return datetime.date(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+def _read_most_recent_delivery_date(driver, wait):
+    """
+    Reads the Relationship Detail page's Sales Order grid (a jqGrid, same
+    paired header/body <table> structure confirmed 2026-08-16 from live
+    inspection - see the "Delivery Date" column) and returns the most recent
+    Delivery Date across all its rows as a raw string, or "" if the grid
+    isn't there or has no rows. Column position is read from the header row
+    rather than hardcoded, in case Siebel ever reorders these.
+    """
+    try:
+        header_table = None
+        deadline = time.time() + 8
+        while time.time() < deadline and header_table is None:
+            for t in driver.find_elements(By.CSS_SELECTOR, "table.ui-jqgrid-htable"):
+                if "Delivery Date" in t.text:
+                    header_table = t
+                    break
+            if header_table is None:
+                time.sleep(0.5)
+        print(f"[field-debug] delivery-date:   header_table found: {header_table is not None}", flush=True)
+        if header_table is None:
+            all_htables = driver.find_elements(By.CSS_SELECTOR, "table.ui-jqgrid-htable")
+            print(f"[field-debug] delivery-date:   {len(all_htables)} htables present, none had 'Delivery Date':", flush=True)
+            for t in all_htables:
+                print(f"[field-debug] delivery-date:     {t.text[:80]!r}", flush=True)
+            return ""
+
+        header_cells = [c.text.strip() for c in header_table.find_elements(By.TAG_NAME, "th")] \
+            or [c.text.strip() for c in header_table.find_elements(By.TAG_NAME, "td")]
+        print(f"[field-debug] delivery-date:   header_cells: {header_cells}", flush=True)
+        if "Delivery Date" not in header_cells:
+            return ""
+        date_col = header_cells.index("Delivery Date")
+
+        all_header_tables = driver.find_elements(By.CSS_SELECTOR, "table.ui-jqgrid-htable")
+        all_body_tables = driver.find_elements(By.CSS_SELECTOR, "table.ui-jqgrid-btable")
+        header_index = all_header_tables.index(header_table)
+        if header_index >= len(all_body_tables):
+            return ""
+        body_table = all_body_tables[header_index]
+
+        best_date, best_raw = None, ""
+        body_rows = body_table.find_elements(By.TAG_NAME, "tr")
+        print(f"[field-debug] delivery-date:   body rows: {len(body_rows)}", flush=True)
+        for row in body_rows:
+            cells = row.find_elements(By.TAG_NAME, "td")
+            if len(cells) <= date_col:
+                continue
+            raw_date = cells[date_col].text.strip()
+            print(f"[field-debug] delivery-date:     row date cell: {raw_date!r}", flush=True)
+            parsed = _parse_sdms_date(raw_date)
+            if parsed and (best_date is None or parsed > best_date):
+                best_date, best_raw = parsed, raw_date
+
+        return best_raw
+    except Exception as e:
+        print(f"[field-debug] delivery-date:   EXCEPTION in grid read: {e}", flush=True)
+        return ""
+
+
+def _get_last_delivery_date(driver, wait):
+    """
+    The Contact Form's own "Relationship" list (already part of the loaded
+    contact's page - no separate "Relationships" tab click needed, confirmed
+    2026-08-16 after repeatedly landing on an unrelated top-level
+    "Relationships" module by mistake) has one row per relationship the
+    consumer has - LPG, Loyalty, etc. LPG relationships are the ones whose
+    Relationship Id starts with "7" (a "7 series" number, per explicit
+    instruction - Loyalty and others use different numbering, e.g. a
+    "6000..." id seen live). A consumer can have more than one 7-series
+    relationship (e.g. an ACTIVE one and an older TRANSFERRED one) - each is
+    drilled into and checked, since it isn't safe to assume only the first
+    one has delivery history. Returns the most recent Delivery Date found
+    across all of them, or "" if none have any.
+    """
+    try:
+        id_cells = driver.find_elements(By.XPATH, "//td[@aria-roledescription='Relationship Id']")
+        print(f"[field-debug] delivery-date: relationship id cells found: {len(id_cells)}", flush=True)
+        seven_series_ids = []
+        for cell in id_cells:
+            try:
+                link = cell.find_element(By.XPATH, ".//a[@class='drilldown']")
+                value = (link.text or "").strip()
+                print(f"[field-debug] delivery-date:   cell value={value!r}", flush=True)
+                if value.startswith("7") and value not in seven_series_ids:
+                    seven_series_ids.append(value)
+            except Exception as e:
+                print(f"[field-debug] delivery-date:   cell has no drilldown link: {e}", flush=True)
+                continue
+
+        print(f"[field-debug] delivery-date: 7-series ids: {seven_series_ids}", flush=True)
+        if not seven_series_ids:
+            return ""
+
+        best_date, best_raw = None, ""
+        for rel_id in seven_series_ids:
+            try:
+                link = wait.until(EC.presence_of_element_located((
+                    By.XPATH,
+                    f"//td[@aria-roledescription='Relationship Id']//a[normalize-space(text())='{rel_id}']"
+                )))
+                driver.execute_script("arguments[0].click();", link)
+
+                # Some relationships trigger a native Siebel business-rule
+                # alert() on drilldown (confirmed 2026-08-16, live: "Selected
+                # address pincode at Relationship does not match any values
+                # defined in your Serving PinCode master...") - purely
+                # informational, dismissing it still lands on the
+                # Relationship Detail page underneath. Left unhandled, this
+                # blocks every subsequent driver call with an
+                # UnexpectedAlertPresentException, which is what silently
+                # emptied Last Delivery Date for every relationship checked
+                # after it too.
+                try:
+                    WebDriverWait(driver, 2).until(EC.alert_is_present())
+                    alert_text = driver.switch_to.alert.text
+                    print(f"[field-debug] delivery-date:   dismissing alert: {alert_text!r}", flush=True)
+                    driver.switch_to.alert.accept()
+                except Exception:
+                    pass
+
+                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                time.sleep(2)
+                print(f"[field-debug] delivery-date: drilled into {rel_id}, url={driver.current_url!r}", flush=True)
+
+                # The Relationship Detail page lands on a different sub-tab
+                # by default (Address/Identity/Bank/Phone/Email applets) -
+                # the Sales Order grid with Delivery Date lives under its own
+                # "Orders" sub-tab (confirmed 2026-08-16, live), not shown
+                # until that tab is clicked.
+                try:
+                    orders_tab = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, "//a[normalize-space(text())='Orders']"))
+                    )
+                    driver.execute_script("arguments[0].click();", orders_tab)
+                    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                    time.sleep(2)
+                    print(f"[field-debug] delivery-date:   clicked Orders tab", flush=True)
+                except Exception as e:
+                    print(f"[field-debug] delivery-date:   could not find/click Orders tab: {e}", flush=True)
+
+                raw_date = _read_most_recent_delivery_date(driver, wait)
+                print(f"[field-debug] delivery-date:   raw_date for {rel_id}: {raw_date!r}", flush=True)
+                parsed = _parse_sdms_date(raw_date) if raw_date else None
+                if parsed and (best_date is None or parsed > best_date):
+                    best_date, best_raw = parsed, raw_date
+            except Exception as e:
+                print(f"[field-debug] delivery-date: EXCEPTION for {rel_id}: {e}", flush=True)
+            finally:
+                # Back to the Contact page so the next 7-series id (if any)
+                # can be found fresh - element handles from before this
+                # drilldown don't survive it, same as everywhere else in
+                # this file that navigates away and back.
+                driver.back()
+                wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                time.sleep(1.5)
+
+        return best_raw
+    except Exception:
+        return ""
+
+
 def _search_one_number(driver, wait, mobile_input, mobile_number):
 
     print(f"[field-debug] === searching {mobile_number} ===", flush=True)
@@ -319,22 +507,6 @@ def _search_one_number(driver, wait, mobile_input, mobile_number):
     # Trimmed from 1s (found 2026-07-28, speeding up bulk search).
     time.sleep(0.6)
 
-    # Address is merged from these 7 results-grid cells - must happen BEFORE
-    # the drilldown click below, since (like the search box) this grid
-    # doesn't survive navigating into a contact's record (found 2026-07-23).
-    # Landmark is deliberately excluded - in this data it just repeats the
-    # phone number being searched, not an actual landmark.
-    grid_address_parts = [
-        _read_grid_field(driver, "Personal Address"),
-        _read_grid_field(driver, "Address Line 2"),
-        _read_grid_field(driver, "Address Line 3"),
-        _read_grid_field(driver, "City"),
-        _read_grid_field(driver, "Postal Code"),
-        _read_grid_field(driver, "District"),
-        _read_grid_field(driver, "State"),
-    ]
-    address = ", ".join(p for p in grid_address_parts if p)
-
     # Also from the results grid, before the drilldown - a single combined
     # name field, more reliable than splitting First Name/Last Name below
     # since it doesn't depend on the drilldown succeeding at all.
@@ -350,15 +522,68 @@ def _search_one_number(driver, wait, mobile_input, mobile_number):
             )
         )
         driver.execute_script("arguments[0].click();", drilldown)
-        # Trimmed from 1.5s (found 2026-07-28, speeding up bulk search).
-        time.sleep(0.8)
         print(f"[field-debug] drilldown clicked for {mobile_number}", flush=True)
+
+        # A fixed 0.8s sleep here (trimmed from 1.5s on 2026-07-28 for bulk
+        # search speed) used to be the only wait before reading every field
+        # below - not always enough time for Siebel to finish rendering the
+        # Contact Form, confirmed 2026-08-16 from real searches coming back
+        # with Relationship Id (and sometimes DOB/Address) silently blank
+        # even for a genuine match. Polling for Relationship Id specifically
+        # to go non-empty is a proxy for "the form has actually rendered" -
+        # capped at 3s so a record that's genuinely missing it (not a timing
+        # issue) doesn't stall the whole search waiting for a value that will
+        # never come.
+        relationship_id_xpath = "//input[@aria-label='Relationship Id']"
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            try:
+                el = driver.find_element(By.XPATH, relationship_id_xpath)
+                if (el.get_attribute("value") or "").strip():
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
+        else:
+            # Timed out without a value - still give the rest of the form a
+            # brief moment, same floor as the old fixed sleep.
+            time.sleep(0.3)
     except Exception as e:
         # No result row to click — a genuine no-match. The field reads below
         # will all come back empty, same as any other not-found case.
         print(f"[field-debug] NO drilldown row for {mobile_number}: {e}", flush=True)
 
     relationship_id = _read_form_field(driver, "input", "Relationship Id")
+
+    # The Contact Form's own single "Address" textarea (Consumer Detail
+    # panel) is the ONLY address source now (per explicit instruction) - the
+    # old approach of reassembling 7 separate results-grid cells (Personal
+    # Address/Address Line 2/3/City/Postal Code/District/State) produced a
+    # messier, less readable address and has been dropped entirely rather
+    # than kept as a fallback.
+    #
+    # A plain aria-label='Address' exact match (what live DevTools
+    # inspection showed for two different contacts) came back with ZERO
+    # matches for a third real contact (confirmed 2026-08-16) despite the
+    # rest of the form reading fine - this field's real attribute is
+    # aria-labelledby="EPIC_Primary_Account_Street_Address_Label_8", where
+    # the trailing "_8" is a session-specific instance number (same
+    # fragility documented on _read_form_field_by_labelledby_contains() for
+    # District/Country/etc.), and apparently not every contact's session
+    # renders a plain aria-label alongside it. Matching on the
+    # labelledby-contains substring instead is what already handles this
+    # exact situation for every other field in this file.
+    address_xpath = "//textarea[contains(@aria-labelledby, 'Street_Address_Label')]"
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        try:
+            el = driver.find_element(By.XPATH, address_xpath)
+            if (el.get_attribute("value") or "").strip():
+                break
+        except Exception:
+            pass
+        time.sleep(0.2)
+    address = _read_form_field_by_labelledby_contains(driver, "textarea", "Street_Address_Label")
 
     country = _read_form_field_by_labelledby_contains(driver, "input", "Personal_Country_Label")
     pin_code = _read_form_field_by_labelledby_contains(driver, "input", "Personal_Postal_Code_Label")
@@ -419,6 +644,8 @@ def _search_one_number(driver, wait, mobile_input, mobile_number):
         print(f"[field-debug] phone cell scan EXCEPTION: {e}", flush=True)
     alternate_number = ", ".join(alt_numbers)
 
+    last_delivery_date = _get_last_delivery_date(driver, wait)
+
     return {
         "Mobile Number": mobile_number,
         "Full Name": full_name,
@@ -429,6 +656,7 @@ def _search_one_number(driver, wait, mobile_input, mobile_number):
         "Country": country,
         "Pin Code": pin_code,
         "Urban/Rural": urban_rural,
+        "Last Delivery Date": last_delivery_date,
     }
 
 
@@ -451,6 +679,52 @@ def _quit_driver_with_timeout(driver, timeout=15):
     quit_thread.join(timeout)
 
 
+def _type_and_submit(input_el, value, timeout=8):
+    """
+    Fills a locateme.services search <input> with `value` and submits it -
+    used by rc_print.py/hp_gas.py/tracing2_tools.py's own search inputs.
+
+    Confirmed live 2026-09-02: this site rejects Selenium's synthetic
+    keyboard events on its search inputs specifically (send_keys() and even
+    ActionChains produced literally zero characters, every single attempt -
+    not a timing race, since retrying repeatedly over 8s never once got a
+    character through) while the SAME technique typed the login page's
+    email/password fields (rc_print.py's _login()) just fine - this looks
+    like a deliberate anti-scraping measure scoped to the credit-consuming
+    search pages rather than a general bot-detection block (navigator.
+    webdriver reads as unset, same as everywhere else this codebase talks to
+    this site). Enter-key submission is blocked the same way.
+    Setting the value via the native <input> value setter (bypassing
+    whatever wraps .value on this React/Next.js input) and dispatching
+    input/change events updates React's own state correctly - confirmed via
+    get_attribute("value") reflecting it immediately - and clicking the
+    page's own type="submit" button (real mouse click, not a key event)
+    submits it the same way a human clicking it would.
+    """
+    deadline = time.time() + timeout
+    while True:
+        input_el.click()
+        driver = input_el.parent
+        driver.execute_script(
+            """
+            const el = arguments[0], value = arguments[1];
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(el, value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            """,
+            input_el, str(value),
+        )
+        if input_el.get_attribute("value") == str(value):
+            break
+        if time.time() >= deadline:
+            raise RuntimeError(f"Could not type {value!r} into the search box.")
+        time.sleep(0.5)
+
+    submit_btn = input_el.find_element(By.XPATH, "./ancestor::form//button[@type='submit']")
+    driver.execute_script("arguments[0].click();", submit_btn)
+
+
 def run_bulk_search(mobile_numbers, progress_callback=None):
     """
     Runs the SDMS bulk search for the given list of mobile numbers
@@ -460,7 +734,12 @@ def run_bulk_search(mobile_numbers, progress_callback=None):
     after each number is processed, if provided.
     """
 
-    mobile_numbers = mobile_numbers[:25]
+    # Raised from 25 to 500 (2026-08-19, admin-only per explicit request) -
+    # must match app.py's MAX_NUMBERS_ADMIN. Can't import that constant here
+    # (app.py already imports run_bulk_search FROM this module, so the
+    # reverse import would be circular) - see app.py's own comment on
+    # MAX_NUMBERS_ADMIN for what goes wrong if these two drift apart again.
+    mobile_numbers = mobile_numbers[:500]
 
     results = []
 
@@ -492,6 +771,7 @@ def run_bulk_search(mobile_numbers, progress_callback=None):
                 "Country": "",
                 "Pin Code": "",
                 "Urban/Rural": "",
+                "Last Delivery Date": "",
                 "NOT_FOUND": True
             }
 
@@ -551,7 +831,7 @@ def run_bulk_search(mobile_numbers, progress_callback=None):
 if __name__ == "__main__":
 
     print("Enter mobile numbers for bulk search")
-    print("(separate by comma, space, or new line - up to 25 numbers).")
+    print("(separate by comma, space, or new line - up to 500 numbers).")
     print("Press ENTER on a blank line when done:\n")
 
     raw_lines = []

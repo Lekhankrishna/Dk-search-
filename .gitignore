@@ -23,14 +23,63 @@
 /Gas/lpg_web/lpgtool.log
 /Gas/lpg_web/lpgtool_error.log
 
-# Real SDMS login for lpg_search.py's Selenium automation - see
-# Gas/lpg_web/config.py.example (found hardcoded directly in lpg_search.py
-# and already committed to git history 2026-08-07; moved out here).
+# Real SDMS + LOCATEME logins for lpg_search.py/rc_print.py's Selenium
+# automation - see Gas/lpg_web/config.py.example (found hardcoded directly
+# in those scripts and already committed to git history; moved out here).
 /Gas/lpg_web/config.py
+
+# Real logins for the Advance Pan India / Night Out / Advanced Search
+# vendor accounts - see config/vendor_credentials.php.example (found
+# hardcoded directly in includes/eagleeye_client.php,
+# includes/pan_india_pro_client.php, and includes/tracekart_client.php;
+# moved out here).
+/config/vendor_credentials.php
+
+# PAN India Telegram credentials and the local worker's whole runtime
+# directory (downloaded PHP loader/PHAR, QR-authorized session, logs) -
+# entirely machine-specific and regenerated on demand, nothing in it is source.
+/config/telegram.php
+/Gas/telegram_php/
+/MadelineProto.log
+/api/MadelineProto.log
+/api/madeline.version
+
+# Local deployment packaging output (see PAN_INDIA_DEPLOYMENT.md) - a zipped
+# copy of already-tracked files for manual transfer, not source itself.
+/pan-india-deployment-*/
+/pan-india-deployment-*.zip
 
 # Python bytecode cache
 __pycache__/
 *.pyc
 
+# Project-local development runtimes and downloaded installers.
+/.runtime/
+
 # Claude Code local tooling config - machine-specific, not part of the app.
 /.claude/
+
+# Query output dumps - contain real customer PII (names, phones, PAN numbers,
+# addresses), same reasoning as the /cli/*.log exclusion above.
+/database/output_*.csv
+
+# Local service runtime logs (this machine's LPG web service), not source.
+/Gas/lpg_web/service.log
+/Gas/lpg_web/service_error.log
+
+# Admin > Agents create/edit PDOException details (admin/agents.php) - the
+# php.ini-configured error_log path isn't readable outside the web server's
+# own account, so this is logged here instead for debugging. Not source.
+/agents_debug.log
+
+# Stray editor/manual backup copies of tracked files.
+*.bak-*
+
+# Scratch captures of vendor login sessions (cookies, headers, HTML) - live
+# session data, not source.
+/.scratch_*
+
+# MadelineProto runtime downloaded on demand at the repo root, not source.
+/madeline-*.phar
+/madeline-*.phar.lock
+/madeline.version

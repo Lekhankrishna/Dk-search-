@@ -6,8 +6,49 @@ import traceback
 import uuid
 
 from lpg_search import run_bulk_search
+from rc_print import run_rc_print
+from hp_gas import run_hp_gas_single
+from tataplay import run_tataplay_single
+from tracing2_tools import run_tool_search, TOOL_REGISTRY
+from indane_gas_pro import search_indane_gas_pro
+from aadhaar_to_ration import run_aadhaar_to_ration
 
 app = Flask(__name__)
+
+
+def clean_error_message(e):
+    """
+    Selenium's WebDriverException (and friends) dump their entire native
+    ChromeDriver stacktrace - dozens of lines of "chromedriver!GetHandleVerifier
+    [0x...]" - straight into str(e), since that IS the exception's message,
+    not something separate a caller can opt out of. Left as-is that lands
+    verbatim in the JSON error field and gets rendered straight into the
+    page (found 2026-08-08 live) - useless and alarming to whoever's running
+    a search, not just ugly. The real detail is still in this server's own
+    console log (see the traceback.format_exc() print right before this is
+    called) for whoever's actually debugging it; this is only what the
+    agent using the tool sees.
+    """
+    first_line = str(e).split("\n", 1)[0].split("Stacktrace:", 1)[0].strip()
+    # Selenium's own WebDriverException.__str__ prefixes even a genuinely
+    # empty message with "Message:" - stripping it bare (found 2026-08-08,
+    # a real crash on this server left literally "Message:" as the only
+    # visible text) so an empty message actually falls through to the
+    # generic fallback below instead of showing that half-formed leftover.
+    if first_line.lower().startswith("message:"):
+        first_line = first_line[len("message:"):].strip()
+    # rc_print.py's _login() (reused by hp_gas.py, tracing2_tools.py, and
+    # aadhaar_to_ration.py through it) raises "locateme.services login
+    # failed: <reason>"/"...login timed out..." for things like the shared
+    # account's IP restriction tripping - confirmed live 2026-09-05, an
+    # agent saw the raw "locateme.services login failed: access restricted"
+    # text. That's an infrastructure problem on the shared account, not
+    # anything the agent did or can act on, so it gets the same generic
+    # "Server is down" message every other unreachable-service case here
+    # already shows instead of a raw internal string.
+    if first_line.lower().startswith("locateme.services login"):
+        return "Server is down. Please try again later."
+    return first_line or "An unexpected error occurred. Please try again or contact your admin."
 
 # Runs centrally on the CRM server itself (found 2026-07-27) rather than one
 # copy per agent's computer - lpg_search_api.php (server-side PHP, not the
@@ -25,6 +66,18 @@ jobs = {}
 jobs_lock = threading.Lock()
 
 MAX_NUMBERS = 10
+
+# Raised from 25 to 500 (2026-08-19, admin-only per explicit request). Must
+# match lpg_search.py's own hardcoded `mobile_numbers[:500]` inside
+# run_bulk_search() - can't import this constant there (app.py already
+# imports FROM lpg_search.py, so the reverse import would be circular), so
+# the two numbers have to be kept in sync by hand instead. Whichever number
+# wins here decides what "total" gets set to below; if run_bulk_search
+# truncates to something smaller, a job finishes with done < total forever -
+# looks exactly like the search got stuck partway through (found 2026-08-05
+# live, when these two numbers first drifted apart at 25 vs an uncapped
+# admin submission of 162).
+MAX_NUMBERS_ADMIN = 500
 
 # Nothing ever removed a finished job from `jobs` - for a server that stays
 # up for days/weeks, that's an unbounded memory leak, one entry per search
@@ -104,7 +157,7 @@ def _run_job(job_id, numbers):
         print(f"[job {job_id}] FAILED:\n{full_trace}")
         with jobs_lock:
             jobs[job_id]["status"] = "failed"
-            jobs[job_id]["error"] = str(e)
+            jobs[job_id]["error"] = clean_error_message(e)
             jobs[job_id]["traceback"] = full_trace
             jobs[job_id]["finished_at"] = time.time()
 
@@ -118,7 +171,11 @@ def start_search():
     if not numbers:
         return jsonify({"error": "No numbers provided"}), 400
 
-    numbers = numbers[:MAX_NUMBERS]
+    # lpg_search_api.php sets this from the caller's actual session role (not
+    # trusted from anywhere else reachable - this endpoint only ever hears
+    # from that PHP proxy over loopback, per the module-level comment above)
+    # so admins can run batches larger than the normal agent cap.
+    numbers = numbers[:MAX_NUMBERS_ADMIN] if data.get("isAdmin") else numbers[:MAX_NUMBERS]
 
     _prune_old_jobs()
 
@@ -180,6 +237,143 @@ def get_search(job_id):
             "error": job.get("error"),
             "queuePosition": queue_position,
         })
+
+
+@app.route("/api/rc-print", methods=["POST"])
+def rc_print():
+    data = request.get_json(silent=True) or {}
+    vehicle_number = str(data.get("vehicleNumber", "")).strip()
+
+    if not vehicle_number:
+        return jsonify({"error": "No vehicle number provided"}), 400
+
+    # Single lookup, run synchronously (unlike /api/search's job-queue +
+    # polling, which exists for batches of up to 500 numbers) - one vehicle
+    # in, one PDF out, so there's nothing to report incremental progress on.
+    # Shares selenium_semaphore with LPG bulk search so the two tools'
+    # Chrome sessions never together exceed MAX_CONCURRENT_SEARCHES on this
+    # box's fixed core count.
+    with selenium_semaphore:
+        try:
+            result = run_rc_print(vehicle_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[rc-print {vehicle_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/aadhaar-to-ration", methods=["POST"])
+def aadhaar_to_ration():
+    data = request.get_json(silent=True) or {}
+    aadhaar_number = str(data.get("aadhaarNumber", "")).strip()
+
+    if not aadhaar_number:
+        return jsonify({"error": "No Aadhaar number provided"}), 400
+
+    # Same shape as /api/rc-print - single lookup, synchronous, sharing
+    # selenium_semaphore with everything else here.
+    with selenium_semaphore:
+        try:
+            result = run_aadhaar_to_ration(aadhaar_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[aadhaar-to-ration {aadhaar_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/hp-gas", methods=["POST"])
+def hp_gas():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print - single lookup, synchronous, sharing
+    # selenium_semaphore with LPG bulk search and RC Print.
+    with selenium_semaphore:
+        try:
+            result = run_hp_gas_single(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[hp-gas {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/indane-gas-pro", methods=["POST"])
+def indane_gas_pro():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print/hp-gas/tataplay - single lookup,
+    # synchronous, sharing selenium_semaphore with everything else here.
+    # Tries all three OMCs (IOCL/HPCL/BPCL) internally via the site's own
+    # read-only consumer-lookup modal (see indane_gas_pro.py's own comment -
+    # never the Query Form's complaint-creating Submit button), so this
+    # endpoint only ever takes a mobile number, same as hp-gas/tataplay.
+    with selenium_semaphore:
+        try:
+            result = search_indane_gas_pro(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[indane-gas-pro {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/tataplay", methods=["POST"])
+def tataplay():
+    data = request.get_json(silent=True) or {}
+    mobile_number = str(data.get("mobileNumber", "")).strip()
+
+    if not mobile_number:
+        return jsonify({"error": "No mobile number provided"}), 400
+
+    # Same shape as /api/rc-print/hp-gas - single lookup, synchronous,
+    # sharing selenium_semaphore with every other Selenium-backed tool.
+    with selenium_semaphore:
+        try:
+            result = run_tataplay_single(mobile_number)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[tataplay {mobile_number}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
+
+
+@app.route("/api/tracing2-tool", methods=["POST"])
+def tracing2_tool():
+    data = request.get_json(silent=True) or {}
+    tool_slug = str(data.get("toolSlug", "")).strip()
+    query = str(data.get("query", "")).strip()
+
+    if tool_slug not in TOOL_REGISTRY:
+        return jsonify({"error": "Unknown tool"}), 400
+    if not query:
+        return jsonify({"error": "No query value provided"}), 400
+
+    # Same shape as /api/mobile-info etc - single lookup, synchronous,
+    # sharing selenium_semaphore with every other Selenium-backed tool.
+    with selenium_semaphore:
+        try:
+            result = run_tool_search(tool_slug, query)
+        except Exception as e:
+            full_trace = traceback.format_exc()
+            print(f"[tracing2-tool {tool_slug} {query}] FAILED:\n{full_trace}")
+            return jsonify({"error": clean_error_message(e)}), 502
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":

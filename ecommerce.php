@@ -1,10 +1,22 @@
 <?php
 require __DIR__ . '/includes/auth.php';
-requireLogin();
+requireEcommerceAccess(); // requireLogin() + 403 without E Commerce access (Admin > Agents)
 $user = currentUser();
 require __DIR__ . '/includes/header.php';
 ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<style>
+  /* Search/Clear moved to their own row below the input fields, this page
+     only - .sp-form/.sp-fields/.sp-btn are shared with index.php/pan_india.php
+     (assets/style.css), which weren't asked to change and keep the buttons
+     inline. flex-basis:100% on .sp-form's flex-wrap:wrap row is what forces
+     .sp-actions onto a new line regardless of how much space is left. */
+  #search-form .sp-actions{display:flex;gap:10px;flex-basis:100%;margin-top:10px;}
+</style>
+
+<!-- Confetti overlay - populated/cleared by startConfetti()/stopConfetti()
+     (assets/confetti.js), only while a search has actually returned rows. -->
+<div class="confetti-container" id="confetti-container"></div>
 
 <div class="page-header" style="display:flex;align-items:center;flex-wrap:wrap;gap:12px">
   <h1 class="page-title-main" style="margin:0">E COMMERCE</h1>
@@ -50,12 +62,14 @@ require __DIR__ . '/includes/header.php';
           <input class="sp-input" type="number" name="radius" placeholder="Radius (km)" min="0.1" step="0.1" style="max-width:140px">
         </div>
       </div>
-      <button type="submit" class="sp-btn" id="search-btn">
-        <i class="bi bi-search"></i> Search
-      </button>
-      <button type="button" class="sp-btn sp-btn-clear" id="clear-btn" onclick="clearSearch()">
-        <i class="bi bi-x-circle"></i> Clear
-      </button>
+      <div class="sp-actions">
+        <button type="submit" class="sp-btn" id="search-btn">
+          <i class="bi bi-search"></i> Search
+        </button>
+        <button type="button" class="sp-btn sp-btn-clear" id="clear-btn" onclick="clearSearch()">
+          <i class="bi bi-x-circle"></i> Clear
+        </button>
+      </div>
     </form>
   </div>
 
@@ -258,6 +272,7 @@ async function runSearch(p) {
     card.style.display='';
     dataTable.columns.adjust();
     card.scrollIntoView({behavior:'smooth',block:'start'});
+    if (data.rows.length > 0) startConfetti(); else stopConfetti();
   } catch (err) {
     alert('Search failed: could not reach the server. Please check your connection and try again.');
   } finally { btn.innerHTML='<i class="bi bi-search"></i> Search'; btn.disabled=false; }
@@ -268,10 +283,12 @@ searchForm.addEventListener('submit', e => {
   runSearch(buildSearchParams());
 });
 
+
 function clearSearch() {
   document.getElementById('search-form').reset();
   document.querySelectorAll('.sp-input').forEach(el => el.value = '');
   document.getElementById('results-card').style.display = 'none';
+  stopConfetti();
 }
 
 /* E-Commerce results are excluded from copy/export (unlike the state search

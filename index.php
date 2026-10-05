@@ -6,7 +6,16 @@ require __DIR__ . '/includes/header.php';
 ?>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
-<h1 class="page-title-main" id="page-title">CRM-PORTAL</h1>
+<!-- Confetti overlay (2026-08-08) - populated/cleared by startConfetti()/
+     stopConfetti() below, only while a search has actually returned rows.
+     Fixed to the right-hand content panel only (offset past the sidebar,
+     see .confetti-container CSS) so it never covers the sidebar, and spans
+     the full panel height rather than being boxed into the results card.
+     pointer-events:none the whole way down so it never blocks clicking
+     anything underneath it. -->
+<div class="confetti-container" id="confetti-container"></div>
+
+<h1 class="page-title-main" id="page-title">DK Search</h1>
 
 <!-- ── Search Panel ── -->
 <div class="sp-wrap">
@@ -31,7 +40,7 @@ require __DIR__ . '/includes/header.php';
     <form id="search-form" class="sp-form">
       <div class="sp-fields">
         <div class="field-group" data-for="mobile">
-          <input class="sp-input" type="text" name="mobile" placeholder="Enter mobile number… (paste multiple to bulk search)" id="mobile-input">
+          <input class="sp-input" type="text" name="mobile" placeholder="<?= isMainAdmin() ? 'Enter mobile number… (paste multiple to bulk search - no limit)' : 'Enter mobile number…' ?>" id="mobile-input">
         </div>
         <div class="field-group" data-for="name" style="display:none">
           <input class="sp-input" type="text" name="name_only" placeholder="Customer name…">
@@ -63,7 +72,7 @@ require __DIR__ . '/includes/header.php';
         </div>
         <div class="field-group" data-for="multi_mobile" style="display:none">
           <textarea class="sp-input sp-textarea" name="mobiles"
-            placeholder="Paste numbers — one per line or comma-separated (max 50)"></textarea>
+            placeholder="Paste numbers — one per line or comma-separated (no limit)"></textarea>
         </div>
       </div>
       <button type="submit" class="sp-btn" id="search-btn">
@@ -102,6 +111,9 @@ require __DIR__ . '/includes/header.php';
         <i class="bi bi-search"></i>
         <input type="text" id="dt-search-input" placeholder="Filter results…">
       </div>
+      <button type="button" class="dt-copy-btn" id="copy-all-btn">
+        <i class="bi bi-copy"></i> Copy All Results
+      </button>
     </div>
   </div>
 
@@ -128,7 +140,10 @@ require __DIR__ . '/includes/header.php';
 
   <!-- Footer: info + pagination -->
   <div class="dt-footer">
-    <div class="dt-info" id="dt-info-text"></div>
+    <div class="dt-info-group">
+      <div class="dt-info" id="dt-info-text"></div>
+      <span class="dt-timing-badge" id="dt-timing-badge" hidden></span>
+    </div>
     <div class="dt-pagination" id="dt-pagination"></div>
   </div>
 
@@ -140,6 +155,7 @@ require __DIR__ . '/includes/header.php';
 <script>
 let activeType   = 'mobile';
 let activeState  = new URLSearchParams(location.search).get('state') || '';
+let lastQueryMs  = null;
 let lastResults  = [];
 
 function genderBadge(g) {
@@ -225,8 +241,8 @@ const dataTable = $('#results').DataTable({
   autoWidth: false,
   language: { emptyTable:'<div class="dt-empty"><i class="bi bi-inbox"></i><p>No records found</p></div>' },
   columns: [
-    { data:'name',             width:'10%', render:d=>`<strong class="col-name" title="${esc(d)}">${d||'—'}</strong>` },
-    { data:'mobile_no',        width:'5%',  render:d=>d?`<span class="chip-mobile">${d}</span>`:'<span class="na">—</span>' },
+    { data:'name',             width:'8%', render:d=>`<strong class="col-name" title="${esc(d)}">${d||'—'}</strong>` },
+    { data:'mobile_no',        width:'7%',  render:d=>d?`<span class="chip-mobile">${d}</span>`:'<span class="na">—</span>' },
     { data:'alternative_no',   width:'7%',  render:d=>d?`<span class="chip-mobile">${d}</span>`:'<span class="na">—</span>' },
     { data:'dob',              width:'6%',  render:d=>d?`<span class="col-dob">${fmtDob(d)}</span>`:'<span class="na">—</span>' },
     { data:'gender',           width:'6%',  render:d=>genderBadge(d) },
@@ -243,6 +259,9 @@ const dataTable = $('#results').DataTable({
       `${info.start+1}–${Math.min(info.end, info.recordsDisplay)}`;
     document.getElementById('dt-info-text').textContent =
       `Showing ${showing} of ${info.recordsDisplay} entries`;
+    const badge = document.getElementById('dt-timing-badge');
+    if (lastQueryMs !== null) { badge.textContent = `${lastQueryMs}ms`; badge.hidden = false; }
+    else { badge.hidden = true; }
     renderPagination(info);
   }
 });
@@ -277,7 +296,7 @@ function renderPagination(info) {
 
 /* Page title reflects the selected state */
 function setPageTitle(state) {
-  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'CRM-PORTAL';
+  document.getElementById('page-title').textContent = state ? state.toUpperCase() : 'DK Search';
 }
 setPageTitle(activeState);
 
@@ -364,7 +383,19 @@ async function runSearch(p) {
   const btn = document.getElementById('search-btn');
   btn.innerHTML='<i class="bi bi-hourglass-split"></i> Searching…'; btn.disabled=true;
   try {
-    const res = await fetch('api/search.php?'+p);
+    // Bulk (unlimited) goes as POST - a long number list would overflow a GET URL.
+    const res = p.get('type') === 'multi_mobile'
+      ? await fetch('api/search.php', { method: 'POST', body: p })
+      : await fetch('api/search.php?'+p);
+    if (res.status === 401) {
+      // Session expired/replaced - a database-unavailable message here was
+      // actively misleading (found 2026-08-04): 401 only ever means "not
+      // logged in", never a DB problem, and "try again shortly" doesn't
+      // help when what's actually needed is signing in again.
+      const data = await res.json().catch(() => ({}));
+      window.location.href = data.loginUrl || 'login.php';
+      return;
+    }
     if (!res.ok) {
       alert(`Search failed: server returned ${res.status} ${res.statusText}. The database may be temporarily unavailable — please try again shortly.`);
       return;
@@ -372,6 +403,7 @@ async function runSearch(p) {
     const data = await res.json();
     if (!data.ok){ alert(data.error||'Search failed.'); return; }
     lastResults = data.rows;
+    lastQueryMs = typeof data.queryMs === 'number' ? data.queryMs : null;
     // Use the active state filter directly when one is selected — inspecting
     // returned rows alone breaks on a zero-result search (empty array can't
     // confirm "all Kerala"), which left Gender/Perm.Address visible again.
@@ -396,6 +428,7 @@ async function runSearch(p) {
     card.style.display='';
     dataTable.columns.adjust();
     card.scrollIntoView({behavior:'smooth',block:'start'});
+    if (data.rows.length > 0) startConfetti(); else stopConfetti();
   } catch (err) {
     alert('Search failed: could not reach the server. Please check your connection and try again.');
   } finally { btn.innerHTML='<i class="bi bi-search"></i> Search'; btn.disabled=false; }
@@ -406,11 +439,15 @@ searchForm.addEventListener('submit', e => {
   runSearch(buildSearchParams());
 });
 
+/* Confetti - startConfetti()/stopConfetti() come from the shared
+   assets/confetti.js (loaded in includes/footer.php on every page). */
+
 /* Clear */
 function clearSearch() {
   document.getElementById('search-form').reset();
   document.querySelectorAll('.sp-input').forEach(el => el.value = '');
   document.getElementById('results-card').style.display = 'none';
+  stopConfetti();
   lastResults = [];
 }
 
@@ -432,6 +469,29 @@ document.getElementById('export-btn').addEventListener('click', () => {
   XLSX.utils.book_append_sheet(wb, ws, 'Results');
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   XLSX.writeFile(wb, `crm-search-export-${stamp}.xlsx`);
+});
+
+/* Copy every loaded result (not just the current page) as tab-separated
+   text - pastes cleanly into Excel/Sheets as real columns, unlike a plain
+   comma-joined string. */
+document.getElementById('copy-all-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('copy-all-btn');
+  if (!lastResults.length) { alert('No records to copy.'); return; }
+  const headers = ['Name','Mobile','Alt. Mobile','DOB','Gender',"Father's Name",
+                    'Address','Perm. Address','Email','Identity Doc','State'];
+  const lines = [headers.join('\t'), ...lastResults.map(r => [
+    r.name || '', r.mobile_no || '', r.alternative_no || '', fmtDob(r.dob), r.gender || '',
+    r.father_name || '', r.address || '', r.permanent_address || '', r.email || '',
+    r.identity_no || '', r.state || '',
+  ].join('\t'))];
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+    setTimeout(() => { btn.innerHTML = original; }, 1500);
+  } catch (err) {
+    alert('Could not copy to clipboard — your browser may be blocking clipboard access on this page.');
+  }
 });
 </script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

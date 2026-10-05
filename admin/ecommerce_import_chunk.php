@@ -121,7 +121,8 @@ if ($action === 'chunk') {
     );
 
     // Skip-based resume rather than byte offsets/fseek — simpler and avoids
-    // any fgetcsv+ftell edge cases; skipping via plain fgetcsv() reads is
+    // any fgetcsv+ftell edge cases;
+    //  skipping via plain fgetcsv() reads is
     // fast enough (no DB work, no field mapping) that re-walking prior rows
     // each chunk is not a meaningful cost even at tens of thousands of rows.
     $skip = max(0, (int) ($_POST['skip'] ?? 0));
